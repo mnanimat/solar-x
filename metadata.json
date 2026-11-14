@@ -1,0 +1,6 @@
+{
+  "name": "Solar-X: Space Mission Architect",
+  "description": "An advanced 2D and 3D space mission design, systems engineering, and orbital simulation game inspired by NASA JPL Concept Maturity Levels and CubeSat 101.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
