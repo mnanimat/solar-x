@@ -16,6 +16,7 @@ import {
   type TeamRoleId,
 } from '../engine/missionCatalog';
 import type { DesignEvaluation, MissionDesign } from '../engine/missionPhysics';
+import type { ControllerProfile } from '../engine/flightControls';
 import type { ViewportCameraPreset } from './SpacecraftAndOrbit3D';
 import { GroundTrack2D } from './GroundTrack2D';
 import { TradeSpaceRadar2D } from './TradeSpaceRadar2D';
@@ -47,6 +48,9 @@ interface DesignWorkbenchProps {
   viewPreset: ViewportCameraPreset;
   explodedAmount: number;
   muted: boolean;
+  previewTrajectory?: { altKm: number; incDeg: number };
+  controllerProfile?: ControllerProfile;
+  onResetTrajectoryPreview?: () => void;
   onUpdateDesign: (updater: (prev: MissionDesign) => MissionDesign) => void;
   onResetPreset: () => void;
   onChangeViewPreset: (preset: ViewportCameraPreset) => void;
@@ -62,6 +66,9 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
   viewPreset,
   explodedAmount,
   muted,
+  previewTrajectory = { altKm: 0, incDeg: 0 },
+  controllerProfile = 'none',
+  onResetTrajectoryPreview,
   onUpdateDesign,
   onResetPreset,
   onChangeViewPreset,
@@ -834,7 +841,11 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
           {/* 2D Blueprint & Link Sheet Mode (when toggled) */}
           {centerMode === '2d-blueprint' && (
             <div className="pointer-events-auto m-auto w-full max-w-2xl bg-[#0B111E]/95 border border-slate-700 rounded-2xl p-5 shadow-2xl flex flex-col gap-4 max-h-[82vh] overflow-y-auto">
-              <GroundTrack2D orbit={evaluation.orbit} groundNetwork={evaluation.groundNetwork} />
+              <GroundTrack2D
+                orbit={evaluation.orbit}
+                groundNetwork={evaluation.groundNetwork}
+                inclinationOffsetDeg={previewTrajectory.incDeg}
+              />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <TradeSpaceRadar2D evaluation={evaluation} />
@@ -879,10 +890,48 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
             </div>
           )}
 
-          {/* Subtle Drag Hint on 3D Canvas */}
+          {/* Bottom-Center 3D Interaction & Trajectory Preview Strip */}
           {centerMode !== '2d-blueprint' && (
-            <div className="mx-auto text-[11px] font-mono-tabular text-slate-400/80 bg-[#070A10]/70 px-3 py-1 rounded-full border border-slate-800/70">
-              Drag to orbit 3D {centerMode === '3d-assembly' ? 'spacecraft digital twin' : 'celestial trajectory'} · Scroll to zoom
+            <div className="pointer-events-auto mx-auto flex flex-wrap items-center justify-center gap-2 text-[11px] font-mono-tabular text-slate-300 bg-[#070A10]/85 px-3 py-1.5 rounded-full border border-slate-800/80 shadow-lg">
+              {centerMode === '3d-orbit' ? (
+                <>
+                  <span className="text-amber-300">Drag gold node to test trajectory</span>
+                  <span className="text-slate-500">·</span>
+                  <span>
+                    Alt{' '}
+                    <strong className="text-cyan-300">
+                      {previewTrajectory.altKm >= 0 ? '+' : ''}
+                      {Math.round(previewTrajectory.altKm)} km
+                    </strong>{' '}
+                    · Inc{' '}
+                    <strong className="text-emerald-300">
+                      {previewTrajectory.incDeg >= 0 ? '+' : ''}
+                      {previewTrajectory.incDeg.toFixed(1)}°
+                    </strong>
+                  </span>
+                  {(Math.abs(previewTrajectory.altKm) > 1 || Math.abs(previewTrajectory.incDeg) > 0.2) &&
+                    onResetTrajectoryPreview && (
+                      <button
+                        type="button"
+                        onClick={onResetTrajectoryPreview}
+                        className="ml-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-700 cursor-pointer"
+                      >
+                        Reset
+                      </button>
+                    )}
+                </>
+              ) : (
+                <span>
+                  WASD / Arrows / Q-E rotate craft · Drag to orbit · Scroll to zoom
+                  {controllerProfile === 'ps5-dualsense'
+                    ? ' · PS5 DualSense Ready'
+                    : controllerProfile === 'ps4-dualshock'
+                      ? ' · PS4 DualShock 4 Ready'
+                      : controllerProfile === 'gamepad'
+                        ? ' · Gamepad Ready'
+                        : ''}
+                </span>
+              )}
             </div>
           )}
         </main>

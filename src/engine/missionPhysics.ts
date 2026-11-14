@@ -27,6 +27,7 @@ import {
   type TeamRoleId,
   type VerificationSuite,
 } from './missionCatalog';
+import type { FlightControlInput } from './flightControls';
 
 export interface MissionDesign {
   missionName: string;
@@ -183,6 +184,14 @@ export interface SimulationState {
   failureReason: string | null;
   subSatLatDeg: number;
   subSatLonDeg: number;
+  manualAttitudeActive: boolean;
+  altitudeOffsetKm: number;
+  inclinationOffsetDeg: number;
+  craftPitchRad: number;
+  craftYawRad: number;
+  craftRollRad: number;
+  deltaVRemainingMs: number;
+  activeThrusterDir: 'none' | 'prograde' | 'retrograde' | 'plane';
 }
 
 export interface MissionOutcome {
@@ -867,6 +876,7 @@ const ANOMALY_POOL: ActiveAnomaly[] = [
 
 export function createSimulationState(evaluation: DesignEvaluation): SimulationState {
   const maxBufferGb = Math.max(1.5, evaluation.dailyDataGeneratedGb * 2.5);
+  const deltaVRemainingMs = Math.max(35, Math.round(evaluation.deltaVAvailableMs - evaluation.deltaVRequiredMs * 0.35));
   return {
     phase: 'launch',
     launchProgress: 0,
@@ -908,6 +918,25 @@ export function createSimulationState(evaluation: DesignEvaluation): SimulationS
     failureReason: null,
     subSatLatDeg: 28.5,
     subSatLonDeg: -80.6,
+    manualAttitudeActive: false,
+    altitudeOffsetKm: 0,
+    inclinationOffsetDeg: 0,
+    craftPitchRad: 0,
+    craftYawRad: 0,
+    craftRollRad: 0,
+    deltaVRemainingMs,
+    activeThrusterDir: 'none',
+  };
+}
+
+export function resetSpacecraftAttitude(prev: SimulationState): SimulationState {
+  return {
+    ...prev,
+    manualAttitudeActive: false,
+    craftPitchRad: 0,
+    craftYawRad: 0,
+    craftRollRad: 0,
+    activeThrusterDir: 'none',
   };
 }
 
@@ -916,7 +945,8 @@ export function stepSimulationTick(
   design: MissionDesign,
   evaluation: DesignEvaluation,
   dtSeconds: number,
-  speedMultiplier = 1
+  speedMultiplier = 1,
+  flightInput?: FlightControlInput
 ): SimulationState {
   if (prev.phase === 'completed' || prev.phase === 'failed' || prev.activeAnomaly) {
     return prev;
@@ -926,7 +956,49 @@ export function stepSimulationTick(
     ...prev,
     eventLog: prev.eventLog,
     telemetryHistory: prev.telemetryHistory,
+    activeThrusterDir: 'none',
   };
+
+  // Apply manual 3-axis spacecraft attitude & trajectory thruster burns if provided
+  if (flightInput) {
+    const hasAttitude =
+      Math.abs(flightInput.pitch) > 0.01 ||
+      Math.abs(flightInput.yaw) > 0.01 ||
+      Math.abs(flightInput.roll) > 0.01;
+    if (hasAttitude) {
+      next.manualAttitudeActive = true;
+      next.craftPitchRad = clamp(prev.craftPitchRad + flightInput.pitch * dtSeconds * 1.9, -1.45, 1.45);
+      next.craftYawRad = prev.craftYawRad + flightInput.yaw * dtSeconds * 2.1;
+      next.craftRollRad = prev.craftRollRad + flightInput.roll * dtSeconds * 2.1;
+    }
+
+    if (prev.phase === 'operations' && prev.deltaVRemainingMs > 0.2) {
+      const pro = flightInput.progradeThrust;
+      const ret = flightInput.retrogradeThrust;
+      const inc = flightInput.inclinationDelta;
+      const totalBurn = pro + ret + Math.abs(inc);
+      if (totalBurn > 0.05) {
+        const dvCost = Math.min(prev.deltaVRemainingMs, totalBurn * dtSeconds * 14);
+        next.deltaVRemainingMs = Math.max(0, prev.deltaVRemainingMs - dvCost);
+        next.altitudeOffsetKm = clamp(
+          prev.altitudeOffsetKm + (pro - ret) * dtSeconds * 140,
+          -140,
+          650
+        );
+        next.inclinationOffsetDeg = clamp(
+          prev.inclinationOffsetDeg + inc * dtSeconds * 26,
+          -35,
+          35
+        );
+        next.activeThrusterDir =
+          pro > ret && pro >= Math.abs(inc)
+            ? 'prograde'
+            : ret > pro && ret >= Math.abs(inc)
+              ? 'retrograde'
+              : 'plane';
+      }
+    }
+  }
 
   // Phase 1: Rocket Launch & Staging (takes ~4.5s at 1x)
   if (prev.phase === 'launch') {
@@ -970,12 +1042,15 @@ export function stepSimulationTick(
   const elapsedDays = Math.min(prev.targetDays, prev.elapsedDays + deltaDays);
   next.elapsedDays = elapsedDays;
 
-  // Advance orbit angle visibly (~1.2 rad/s at 1x)
-  const orbitAngleRad = (prev.orbitAngleRad + dtSeconds * 1.15 * Math.sqrt(speedMultiplier)) % (Math.PI * 2);
+  // Keplerian angular rate scales inversely with orbit altitude
+  const keplerSpeedFactor = clamp(1 - next.altitudeOffsetKm / 1800, 0.65, 1.35);
+  const orbitAngleRad =
+    (prev.orbitAngleRad + dtSeconds * 1.15 * keplerSpeedFactor * Math.sqrt(speedMultiplier)) % (Math.PI * 2);
   next.orbitAngleRad = orbitAngleRad;
 
-  // Sub-satellite Earth/Body ground track coordinates (Euclidean modulo to keep lon in [-180, 180])
-  const incRad = (evaluation.orbit.inclinationDeg * Math.PI) / 180;
+  // Sub-satellite Earth/Body ground track coordinates (incorporating live inclination trim)
+  const effectiveIncDeg = clamp(evaluation.orbit.inclinationDeg + next.inclinationOffsetDeg, 0, 178);
+  const incRad = (effectiveIncDeg * Math.PI) / 180;
   const subSatLatDeg = (Math.asin(Math.sin(incRad) * Math.sin(orbitAngleRad)) * 180) / Math.PI;
   const nodalShift = elapsedDays * 22.5;
   const rawDeg = (orbitAngleRad * 180) / Math.PI - nodalShift + 180;
@@ -983,8 +1058,9 @@ export function stepSimulationTick(
   next.subSatLonDeg = rawLon;
   next.subSatLatDeg = subSatLatDeg;
 
-  // Eclipse check (back side of planet around angle PI)
-  const eclipseHalfArc = Math.PI * evaluation.orbit.eclipseFraction;
+  // Eclipse check (back side of planet around angle PI; higher altitude reduces eclipse fraction)
+  const effEclipseFrac = clamp(evaluation.orbit.eclipseFraction - next.altitudeOffsetKm / 3500, 0.04, 0.45);
+  const eclipseHalfArc = Math.PI * effEclipseFrac;
   const inEclipse = Math.abs(orbitAngleRad - Math.PI) < eclipseHalfArc;
   next.inEclipse = inEclipse;
 

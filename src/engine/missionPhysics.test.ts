@@ -92,4 +92,41 @@ describe('Solar-X Coupled Mission Physics & Simulation Engine', () => {
     assert.ok(['S', 'A', 'B'].includes(outcome.grade));
     assert.equal(outcome.breakdown.teamCoordination, 100);
   });
+
+  it('applies manual attitude & orbital trajectory burns (altitude, inclination, delta-v)', () => {
+    const design = createDefaultDesign('bionutrients-leo', 'beginner', false);
+    const evalRes = evaluateMissionDesign(design);
+    let sim = createSimulationState(evalRes);
+    sim.phase = 'operations';
+    const initialDv = sim.deltaVRemainingMs;
+
+    sim = stepSimulationTick(sim, design, evalRes, 0.5, 1, {
+      pitch: 1,
+      yaw: 0.5,
+      roll: -1,
+      progradeThrust: 1,
+      retrogradeThrust: 0,
+      inclinationDelta: 1,
+      cameraYaw: 0,
+      cameraPitch: 0,
+      cameraZoom: 0,
+      togglePausePressed: false,
+      toggleCameraPressed: false,
+      confirmPressed: false,
+      secondaryPressed: false,
+      toggleAutopilotPressed: false,
+      activeSource: 'ps5',
+      controllerProfile: 'ps5-dualsense',
+      controllerName: 'DualSense Wireless Controller',
+    });
+
+    assert.equal(sim.manualAttitudeActive, true);
+    assert.ok(sim.craftPitchRad > 0.5);
+    assert.ok(sim.craftYawRad > 0.2);
+    assert.ok(sim.craftRollRad < -0.5);
+    assert.ok(sim.altitudeOffsetKm > 20);
+    assert.ok(sim.inclinationOffsetDeg > 5);
+    assert.ok(sim.deltaVRemainingMs < initialDv);
+    assert.equal(sim.activeThrusterDir, 'prograde');
+  });
 });

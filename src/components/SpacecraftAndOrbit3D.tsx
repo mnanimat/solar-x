@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { CelestialBodyId } from '../engine/missionCatalog';
 import type { DesignEvaluation, SimulationState } from '../engine/missionPhysics';
+import type { FlightControlInput } from '../engine/flightControls';
 
 export type ViewportCameraPreset = 'assembly' | 'orbit' | 'launch';
 
@@ -13,6 +14,9 @@ interface SpacecraftAndOrbit3DProps {
   explodedAmount: number; // 0..1 for CAD assembly inspection
   evaluation: DesignEvaluation;
   simState: SimulationState | null;
+  flightInputRef?: React.MutableRefObject<FlightControlInput>;
+  previewTrajectory?: { altKm: number; incDeg: number };
+  onTrajectoryDrag?: (altDeltaKm: number, incDeltaDeg: number) => void;
 }
 
 function createSolarCellTexture(): THREE.CanvasTexture {
@@ -163,6 +167,7 @@ interface BuiltSpacecraft {
   rightWingPivot: THREE.Group | null;
   explodedParts: Array<{ obj: THREE.Object3D; basePos: THREE.Vector3; explodeOffset: THREE.Vector3 }>;
   magBoomTip: THREE.Object3D | null;
+  thrusterPlume: THREE.Mesh;
 }
 
 function buildProceduralSpacecraft(
@@ -429,7 +434,22 @@ function buildProceduralSpacecraft(
     root.add(instGroup);
   });
 
-  return { root, leftWingPivot, rightWingPivot, explodedParts, magBoomTip };
+  // 8. RCS / Main Thruster Exhaust Plume (lights up during manual burns)
+  const thrusterPlume = new THREE.Mesh(
+    new THREE.ConeGeometry(0.18, 0.95, 12),
+    new THREE.MeshBasicMaterial({
+      color: '#F59E0B',
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+    })
+  );
+  thrusterPlume.rotation.x = Math.PI;
+  thrusterPlume.position.set(0, -dims.h * 0.56 - 0.65, 0);
+  thrusterPlume.visible = false;
+  root.add(thrusterPlume);
+
+  return { root, leftWingPivot, rightWingPivot, explodedParts, magBoomTip, thrusterPlume };
 }
 
 function buildRocketStack(lvId: string): {
@@ -502,10 +522,31 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
   explodedAmount,
   evaluation,
   simState,
+  flightInputRef,
+  previewTrajectory,
+  onTrajectoryDrag,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const propsRef = useRef({ mode, viewPreset, explodedAmount, evaluation, simState });
-  propsRef.current = { mode, viewPreset, explodedAmount, evaluation, simState };
+  const propsRef = useRef({
+    mode,
+    viewPreset,
+    explodedAmount,
+    evaluation,
+    simState,
+    flightInputRef,
+    previewTrajectory,
+    onTrajectoryDrag,
+  });
+  propsRef.current = {
+    mode,
+    viewPreset,
+    explodedAmount,
+    evaluation,
+    simState,
+    flightInputRef,
+    previewTrajectory,
+    onTrajectoryDrag,
+  };
 
   const rebuildSignature = [
     evaluation.bus.id,
@@ -666,6 +707,19 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
     beamMesh.visible = false;
     worldGroup.add(beamMesh);
 
+    // Interactive Mouse-Draggable Trajectory Maneuver Node
+    const maneuverHandle = new THREE.Mesh(
+      new THREE.SphereGeometry(0.36, 16, 12),
+      new THREE.MeshBasicMaterial({ color: '#FBBF24' })
+    );
+    const maneuverHalo = new THREE.Mesh(
+      new THREE.RingGeometry(0.46, 0.62, 24),
+      new THREE.MeshBasicMaterial({ color: '#38BDF8', side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+    );
+    maneuverHandle.add(maneuverHalo);
+    maneuverHandle.visible = false;
+    orbitGroup.add(maneuverHandle);
+
     // Spacecraft & Launch Vehicle Containers
     const craftAnchor = new THREE.Group();
     scene.add(craftAnchor);
@@ -676,6 +730,8 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
     let rocketStack = buildRocketStack(propsRef.current.evaluation.launchVehicle.id);
     rocketStack.rocket.visible = false;
     craftAnchor.add(rocketStack.rocket);
+
+    let baseOrbitRadius = 7.4;
 
     const rebuildOrbit = () => {
       const ev = propsRef.current.evaluation;
@@ -688,12 +744,13 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       atmoMesh.visible = body === 'earth' || body === 'mars';
       atmoMat.color.set(body === 'mars' ? '#F97316' : '#38BDF8');
 
-      orbitRadius =
+      baseOrbitRadius =
         body === 'earth'
           ? 6.6 + Math.min(2.6, ev.orbit.altitudeKm / 350)
           : body === 'moon'
             ? 8.5
             : 7.8;
+      orbitRadius = baseOrbitRadius;
 
       if (orbitLine) {
         orbitGroup.remove(orbitLine);
@@ -725,6 +782,64 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
     sceneControlsRef.current = { rebuildOrbit, rebuildSpacecraft };
     rebuildOrbit();
 
+    // Mouse Raycaster for dragging the 3D Orbital Trajectory Maneuver Node directly
+    const raycaster = new THREE.Raycaster();
+    const pointerNdc = new THREE.Vector2();
+    let draggingNode = false;
+    let lastDragX = 0;
+    let lastDragY = 0;
+
+    const updateNdc = (e: PointerEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointerNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointerNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    };
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (!maneuverHandle.visible) return;
+      updateNdc(e);
+      raycaster.setFromCamera(pointerNdc, camera);
+      const hits = raycaster.intersectObject(maneuverHandle, true);
+      if (hits.length > 0) {
+        draggingNode = true;
+        lastDragX = e.clientX;
+        lastDragY = e.clientY;
+        controls.enabled = false;
+        renderer.domElement.style.cursor = 'grabbing';
+      }
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (draggingNode) {
+        const dx = e.clientX - lastDragX;
+        const dy = e.clientY - lastDragY;
+        lastDragX = e.clientX;
+        lastDragY = e.clientY;
+        propsRef.current.onTrajectoryDrag?.(dx * 1.8, -dy * 0.22);
+        return;
+      }
+      if (!maneuverHandle.visible) {
+        renderer.domElement.style.cursor = 'grab';
+        return;
+      }
+      updateNdc(e);
+      raycaster.setFromCamera(pointerNdc, camera);
+      const hits = raycaster.intersectObject(maneuverHandle, true);
+      renderer.domElement.style.cursor = hits.length > 0 ? 'pointer' : 'grab';
+    };
+
+    const onPointerUp = () => {
+      if (draggingNode) {
+        draggingNode = false;
+        controls.enabled = true;
+        renderer.domElement.style.cursor = 'grab';
+      }
+    };
+
+    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+
     const handleResize = () => {
       const w = container.clientWidth || 1280;
       const h = container.clientHeight || 720;
@@ -741,6 +856,11 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
     let smoothExplode = 0;
     let smoothWingAngle = 0;
     let titleOrbitAngle = 0;
+    let manualCadPitch = 0.15;
+    let manualCadYaw = 0.4;
+    let manualCadRoll = 0.06;
+    const camSpherical = new THREE.Spherical();
+    const camOffset = new THREE.Vector3();
 
     const targetCamPos = new THREE.Vector3(5.2, 2.8, 6.2);
     const targetLookAt = new THREE.Vector3(0, 0, 0);
@@ -760,11 +880,40 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
       lastTime = now;
 
-      const { mode: curMode, viewPreset: curPreset, explodedAmount: curExplode, simState: curSim, evaluation: curEval } =
-        propsRef.current;
+      const {
+        mode: curMode,
+        viewPreset: curPreset,
+        explodedAmount: curExplode,
+        simState: curSim,
+        evaluation: curEval,
+        flightInputRef: curFlightRef,
+        previewTrajectory: curPreview,
+      } = propsRef.current;
+      const fi = curFlightRef?.current;
 
       planetMesh.rotation.y += dt * 0.045;
       stars.rotation.y += dt * 0.003;
+
+      // Dynamic orbit radius & inclination from live maneuvers or workbench trajectory drag
+      const altOffset = curMode === 'simulation' && curSim ? curSim.altitudeOffsetKm : curPreview?.altKm ?? 0;
+      const incOffset = curMode === 'simulation' && curSim ? curSim.inclinationOffsetDeg : curPreview?.incDeg ?? 0;
+      const radiusScale = Math.max(0.75, Math.min(1.65, 1 + altOffset / 600));
+      orbitRadius = baseOrbitRadius * radiusScale;
+      if (orbitLine) {
+        orbitLine.scale.setScalar(radiusScale);
+      }
+      orbitGroup.rotation.set(((curEval.orbit.inclinationDeg + incOffset) * Math.PI) / 180, 0, 0.25);
+
+      // Update maneuver handle visibility & placement on the orbit
+      const showHandle =
+        (curMode === 'workbench' && curPreset === 'orbit') ||
+        (curMode === 'simulation' && curSim?.phase === 'operations');
+      maneuverHandle.visible = showHandle;
+      if (showHandle) {
+        const handleAngle = curMode === 'simulation' && curSim ? curSim.orbitAngleRad + 0.6 : 0.85;
+        maneuverHandle.position.set(Math.cos(handleAngle) * orbitRadius, 0, Math.sin(handleAngle) * orbitRadius);
+        maneuverHalo.lookAt(camera.position);
+      }
 
       // Exploded CAD view interpolation
       const targetExplode = curMode === 'workbench' && curPreset === 'assembly' ? curExplode : 0;
@@ -790,6 +939,22 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       smoothWingAngle = THREE.MathUtils.damp(smoothWingAngle, targetFold, 6, dt);
       if (builtCraft.leftWingPivot) builtCraft.leftWingPivot.rotation.z = -smoothWingAngle;
       if (builtCraft.rightWingPivot) builtCraft.rightWingPivot.rotation.z = smoothWingAngle;
+
+      // Thruster plume glow during live orbital burns
+      if (curMode === 'simulation' && curSim && curSim.activeThrusterDir !== 'none') {
+        builtCraft.thrusterPlume.visible = true;
+        const plumeMat = builtCraft.thrusterPlume.material as THREE.MeshBasicMaterial;
+        plumeMat.color.set(
+          curSim.activeThrusterDir === 'prograde'
+            ? '#F59E0B'
+            : curSim.activeThrusterDir === 'retrograde'
+              ? '#38BDF8'
+              : '#10B981'
+        );
+        builtCraft.thrusterPlume.scale.set(1, 0.75 + Math.sin(now * 0.05) * 0.3, 1);
+      } else {
+        builtCraft.thrusterPlume.visible = false;
+      }
 
       // Positioning & Phase Animation
       if (curMode === 'title') {
@@ -822,7 +987,14 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
         builtCraft.root.visible = true;
         craftAnchor.position.set(0, 0, 0);
         craftAnchor.scale.setScalar(1.0);
-        craftAnchor.rotation.set(0.15, craftAnchor.rotation.y + dt * 0.28, 0.06);
+        if (fi && (Math.abs(fi.pitch) > 0.02 || Math.abs(fi.yaw) > 0.02 || Math.abs(fi.roll) > 0.02)) {
+          manualCadPitch = Math.max(-1.4, Math.min(1.4, manualCadPitch + fi.pitch * dt * 1.8));
+          manualCadYaw += fi.yaw * dt * 2.0;
+          manualCadRoll += fi.roll * dt * 2.0;
+        } else {
+          manualCadYaw += dt * 0.25;
+        }
+        craftAnchor.rotation.set(manualCadPitch, manualCadYaw, manualCadRoll);
 
         if (lastPresetKey !== 'workbench-assembly') {
           targetCamPos.set(4.5, 2.2, 5.4);
@@ -898,6 +1070,11 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
           craftAnchor.position.copy(orbitPt);
           craftAnchor.scale.setScalar(curPreset === 'assembly' ? 0.95 : 0.62);
           craftAnchor.lookAt(0, 0, 0);
+          if (curSim.manualAttitudeActive) {
+            craftAnchor.rotateX(curSim.craftPitchRad);
+            craftAnchor.rotateY(curSim.craftYawRad);
+            craftAnchor.rotateZ(curSim.craftRollRad);
+          }
 
           // Ground pass beam cone pointing from craft toward planet center
           if (curSim.inGroundPass && curEval.orbit.targetBody === 'earth') {
@@ -923,6 +1100,20 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
         }
       }
 
+      // PS4/PS5 Right Stick & Keyboard camera orbit/zoom control
+      if (fi && (Math.abs(fi.cameraYaw) > 0.02 || Math.abs(fi.cameraPitch) > 0.02 || Math.abs(fi.cameraZoom) > 0.02)) {
+        camOffset.copy(camera.position).sub(controls.target);
+        camSpherical.setFromVector3(camOffset);
+        camSpherical.theta -= fi.cameraYaw * dt * 1.9;
+        camSpherical.phi = Math.max(0.15, Math.min(Math.PI - 0.15, camSpherical.phi + fi.cameraPitch * dt * 1.5));
+        camSpherical.radius = Math.max(
+          controls.minDistance,
+          Math.min(controls.maxDistance, camSpherical.radius * (1 - fi.cameraZoom * dt * 1.4))
+        );
+        camOffset.setFromSpherical(camSpherical);
+        camera.position.copy(controls.target).add(camOffset);
+      }
+
       controls.update();
       renderer.render(scene, camera);
       afterDraw(tick);
@@ -939,6 +1130,9 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       window.cancelAnimationFrame(rafId);
       window.clearTimeout(timerId);
       window.removeEventListener('resize', handleResize);
+      renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
       controls.dispose();
       solarTex.dispose();
       planetTex.dispose();
@@ -950,6 +1144,10 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       starMat.dispose();
       beamMesh.geometry.dispose();
       beamMat.dispose();
+      maneuverHandle.geometry.dispose();
+      (maneuverHandle.material as THREE.Material).dispose();
+      maneuverHalo.geometry.dispose();
+      (maneuverHalo.material as THREE.Material).dispose();
       envRT?.dispose();
       pmrem?.dispose();
       renderer.dispose();

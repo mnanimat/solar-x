@@ -9,6 +9,7 @@ interface GroundTrack2DProps {
   inGroundPass?: boolean;
   activeStationName?: string | null;
   elapsedDays?: number;
+  inclinationOffsetDeg?: number;
   compact?: boolean;
 }
 
@@ -46,6 +47,7 @@ export const GroundTrack2D: React.FC<GroundTrack2DProps> = ({
   inGroundPass = false,
   activeStationName = null,
   elapsedDays = 0,
+  inclinationOffsetDeg = 0,
   compact = false,
 }) => {
   const width = 480;
@@ -53,7 +55,8 @@ export const GroundTrack2D: React.FC<GroundTrack2DProps> = ({
   const body: CelestialBodyId = orbit.targetBody;
 
   const trackSegments = useMemo(() => {
-    const incRad = (orbit.inclinationDeg * Math.PI) / 180;
+    const effectiveIncDeg = Math.max(0, Math.min(178, orbit.inclinationDeg + inclinationOffsetDeg));
+    const incRad = (effectiveIncDeg * Math.PI) / 180;
     const nodalShift = elapsedDays * 22.5;
     const segments: string[] = [];
     let currentPath = '';
@@ -77,7 +80,7 @@ export const GroundTrack2D: React.FC<GroundTrack2DProps> = ({
     }
     if (currentPath) segments.push(currentPath);
     return segments;
-  }, [orbit.inclinationDeg, elapsedDays]);
+  }, [orbit.inclinationDeg, inclinationOffsetDeg, elapsedDays]);
 
   const satX = projectLon(subSatLonDeg, width);
   const satY = projectLat(subSatLatDeg, height);

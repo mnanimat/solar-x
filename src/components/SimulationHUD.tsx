@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { AnomalyChoice, DesignEvaluation, SimulationState } from '../engine/missionPhysics';
+import type { ControllerProfile, FlightControlInput } from '../engine/flightControls';
 import { TEAM_ROLES } from '../engine/missionCatalog';
 import type { ViewportCameraPreset } from './SpacecraftAndOrbit3D';
 import { GroundTrack2D } from './GroundTrack2D';
@@ -17,6 +18,10 @@ import {
   Thermometer,
   Sparkles,
   HeartPulse,
+  Gamepad2,
+  Compass,
+  Flame,
+  X,
 } from 'lucide-react';
 
 interface SimulationHUDProps {
@@ -27,6 +32,10 @@ interface SimulationHUDProps {
   viewPreset: ViewportCameraPreset;
   muted: boolean;
   teamMode: boolean;
+  controllerProfile: ControllerProfile;
+  activeInputSource: FlightControlInput['activeSource'];
+  onFlightHoldChange: (partial: Partial<FlightControlInput>) => void;
+  onResetAttitude: () => void;
   onTogglePause: () => void;
   onChangeSpeed: (s: number) => void;
   onChangeCamera: (preset: ViewportCameraPreset) => void;
@@ -43,6 +52,10 @@ export const SimulationHUD: React.FC<SimulationHUDProps> = ({
   viewPreset,
   muted,
   teamMode,
+  controllerProfile,
+  activeInputSource,
+  onFlightHoldChange,
+  onResetAttitude,
   onTogglePause,
   onChangeSpeed,
   onChangeCamera,
@@ -50,6 +63,8 @@ export const SimulationHUD: React.FC<SimulationHUDProps> = ({
   onResolveAnomaly,
   onAbortToWorkbench,
 }) => {
+  const [showControlsModal, setShowControlsModal] = useState(false);
+
   const phaseLabel =
     simState.phase === 'launch'
       ? `ASCENT (${Math.round(simState.launchProgress * 100)}%)`
@@ -61,9 +76,20 @@ export const SimulationHUD: React.FC<SimulationHUDProps> = ({
             ? 'PRIME MISSION COMPLETE'
             : 'MISSION LOST';
 
+  const controllerLabel =
+    controllerProfile === 'ps5-dualsense'
+      ? 'PS5 DualSense'
+      : controllerProfile === 'ps4-dualshock'
+        ? 'PS4 DualShock 4'
+        : controllerProfile === 'gamepad'
+          ? 'Gamepad Ready'
+          : 'Keyboard + Mouse';
+
+  const inOps = simState.phase === 'operations';
+
   return (
     <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-3 sm:p-4">
-      {/* Slim Top Telemetry Bar (leaves >=85% viewport unobstructed) */}
+      {/* Slim Top Telemetry Bar */}
       <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 bg-[#0B111E]/95 border border-slate-700/80 rounded-xl px-3.5 py-2 shadow-xl">
         <div className="flex items-center gap-3">
           <div>
@@ -233,9 +259,122 @@ export const SimulationHUD: React.FC<SimulationHUDProps> = ({
         </div>
       )}
 
-      {/* Compact Bottom Corner Panels (2D Ground Track + Event Log) */}
-      <div className="flex flex-col sm:flex-row items-end justify-between gap-3">
-        <div className="pointer-events-auto w-full sm:w-80 bg-[#0B111E]/95 border border-slate-700/80 rounded-xl p-2.5 shadow-xl">
+      {/* Controls Reference Modal (Keyboard, Mouse, PS4 DualShock 4, PS5 DualSense) */}
+      {showControlsModal && (
+        <div className="pointer-events-auto fixed inset-0 z-40 bg-[#05080F]/75 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl bg-[#0B111E] border border-slate-700 rounded-2xl p-5 shadow-2xl flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Gamepad2 className="w-5 h-5 text-cyan-400" />
+                <div>
+                  <h3 className="font-display font-bold text-base text-slate-50">
+                    Spacecraft &amp; Trajectory Flight Controls
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Detected Input Profile: <span className="text-cyan-300 font-mono-tabular">{controllerLabel}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowControlsModal(false)}
+                className="p-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-300 cursor-pointer"
+                aria-label="Close Controls Guide"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div className="bg-[#070B13] border border-slate-800 rounded-xl p-3 flex flex-col gap-1.5">
+                <div className="font-mono-tabular text-[11px] uppercase tracking-wider text-cyan-300 font-semibold">
+                  Keyboard
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">Pitch / Yaw</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">W A S D / Arrows</span>
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">Roll CCW / CW</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">Q / E</span>
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">Prograde (+Alt)</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">Shift / R</span>
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">Retrograde (-Alt)</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">Ctrl / X / F</span>
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">Plane Inclination</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">I / K</span>
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">Zoom / Pause</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">- = / P or Esc</span>
+                </div>
+              </div>
+
+              <div className="bg-[#070B13] border border-slate-800 rounded-xl p-3 flex flex-col gap-1.5">
+                <div className="font-mono-tabular text-[11px] uppercase tracking-wider text-amber-300 font-semibold">
+                  Mouse &amp; 3D Node
+                </div>
+                <div className="text-slate-300 leading-snug">
+                  <span className="text-slate-100 font-medium">Drag Gold Orbit Node:</span> Directly pull the glowing node on the orbital ring to adjust altitude &amp; plane inclination.
+                </div>
+                <div className="text-slate-300 leading-snug">
+                  <span className="text-slate-100 font-medium">Left-Drag Space:</span> Orbit 3D camera around Earth or spacecraft.
+                </div>
+                <div className="text-slate-300 leading-snug">
+                  <span className="text-slate-100 font-medium">Scroll Wheel:</span> Smooth camera zoom in/out.
+                </div>
+                <div className="text-slate-300 leading-snug">
+                  <span className="text-slate-100 font-medium">Hold HUD Buttons:</span> Hold +Alt / -Alt / ±Inc in the flight bar to fire RCS thrusters.
+                </div>
+              </div>
+
+              <div className="bg-[#070B13] border border-slate-800 rounded-xl p-3 flex flex-col gap-1.5">
+                <div className="font-mono-tabular text-[11px] uppercase tracking-wider text-emerald-300 font-semibold">
+                  PS4 DualShock &amp; PS5 DualSense
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">Left Stick</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">Pitch / Yaw</span>
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">Right Stick</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">Camera Orbit</span>
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">R2 / L2</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">Pro / Retro Burn</span>
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">L1 / R1</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">Roll CCW / CW</span>
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">D-Pad Up/Down</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">Inclination ±</span>
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">D-Pad L/R · R3</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">Zoom · View</span>
+                </div>
+                <div className="flex justify-between gap-2 text-slate-300">
+                  <span className="text-slate-400">Triangle · Options</span>
+                  <span className="font-mono-tabular text-right whitespace-nowrap">Nadir · Pause</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compact Bottom Corner Panels + Center Flight & Trajectory Control Strip */}
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-end justify-between gap-2.5">
+        <div className="pointer-events-auto w-full lg:w-76 bg-[#0B111E]/95 border border-slate-700/80 rounded-xl p-2.5 shadow-xl shrink-0">
           <GroundTrack2D
             orbit={evaluation.orbit}
             groundNetwork={evaluation.groundNetwork}
@@ -244,6 +383,7 @@ export const SimulationHUD: React.FC<SimulationHUDProps> = ({
             inGroundPass={simState.inGroundPass}
             activeStationName={simState.activeStationName}
             elapsedDays={simState.elapsedDays}
+            inclinationOffsetDeg={simState.inclinationOffsetDeg}
             compact
           />
           <div className="flex items-center justify-between text-[10px] font-mono-tabular text-slate-400 mt-1.5 px-0.5">
@@ -254,7 +394,122 @@ export const SimulationHUD: React.FC<SimulationHUDProps> = ({
           </div>
         </div>
 
-        <div className="pointer-events-auto w-full sm:w-80 bg-[#0B111E]/95 border border-slate-700/80 rounded-xl p-2.5 shadow-xl">
+        {/* Center Flight & Trajectory Thruster Control Bar */}
+        <div className="pointer-events-auto mx-auto w-full lg:w-auto max-w-xl bg-[#0B111E]/95 border border-slate-700/80 rounded-xl px-3 py-2 shadow-xl flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono-tabular">
+            <div className="flex items-center gap-1.5">
+              <Gamepad2
+                className={`w-3.5 h-3.5 ${
+                  controllerProfile !== 'none' ? 'text-emerald-400' : 'text-cyan-400'
+                }`}
+              />
+              <span className="text-slate-200 font-semibold">{controllerLabel}</span>
+              {activeInputSource !== 'idle' && (
+                <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 uppercase">
+                  {activeInputSource} active
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 text-slate-300">
+              <span>
+                Δv <strong className="text-amber-300">{Math.round(simState.deltaVRemainingMs)}</strong> m/s
+              </span>
+              <span>
+                Alt{' '}
+                <strong className="text-cyan-300">
+                  {simState.altitudeOffsetKm >= 0 ? '+' : ''}
+                  {Math.round(simState.altitudeOffsetKm)} km
+                </strong>
+              </span>
+              <span>
+                Inc{' '}
+                <strong className="text-emerald-300">
+                  {simState.inclinationOffsetDeg >= 0 ? '+' : ''}
+                  {simState.inclinationOffsetDeg.toFixed(1)}°
+                </strong>
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            <div className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                disabled={!inOps || simState.deltaVRemainingMs <= 0.2}
+                onPointerDown={() => onFlightHoldChange({ retrogradeThrust: 1 })}
+                onPointerUp={() => onFlightHoldChange({})}
+                onPointerLeave={() => onFlightHoldChange({})}
+                onPointerCancel={() => onFlightHoldChange({})}
+                className="px-2 py-1 rounded text-[11px] font-mono-tabular bg-slate-900 border border-slate-700 hover:border-cyan-400 disabled:opacity-45 text-cyan-200 cursor-pointer flex items-center gap-1 select-none"
+                title="Retrograde Burn (Ctrl / X / L2)"
+              >
+                <Flame className="w-3 h-3 text-cyan-400" />
+                -Alt Retro
+              </button>
+              <button
+                type="button"
+                disabled={!inOps || simState.deltaVRemainingMs <= 0.2}
+                onPointerDown={() => onFlightHoldChange({ progradeThrust: 1 })}
+                onPointerUp={() => onFlightHoldChange({})}
+                onPointerLeave={() => onFlightHoldChange({})}
+                onPointerCancel={() => onFlightHoldChange({})}
+                className="px-2 py-1 rounded text-[11px] font-mono-tabular bg-slate-900 border border-slate-700 hover:border-amber-400 disabled:opacity-45 text-amber-200 cursor-pointer flex items-center gap-1 select-none"
+                title="Prograde Burn (Shift / R / R2)"
+              >
+                <Flame className="w-3 h-3 text-amber-400" />
+                +Alt Pro
+              </button>
+              <button
+                type="button"
+                disabled={!inOps || simState.deltaVRemainingMs <= 0.2}
+                onPointerDown={() => onFlightHoldChange({ inclinationDelta: 1 })}
+                onPointerUp={() => onFlightHoldChange({})}
+                onPointerLeave={() => onFlightHoldChange({})}
+                onPointerCancel={() => onFlightHoldChange({})}
+                className="px-2 py-1 rounded text-[11px] font-mono-tabular bg-slate-900 border border-slate-700 hover:border-emerald-400 disabled:opacity-45 text-emerald-200 cursor-pointer select-none"
+                title="Normal Plane Burn +Inc (I / D-Pad Up)"
+              >
+                +Inc
+              </button>
+              <button
+                type="button"
+                disabled={!inOps || simState.deltaVRemainingMs <= 0.2}
+                onPointerDown={() => onFlightHoldChange({ inclinationDelta: -1 })}
+                onPointerUp={() => onFlightHoldChange({})}
+                onPointerLeave={() => onFlightHoldChange({})}
+                onPointerCancel={() => onFlightHoldChange({})}
+                className="px-2 py-1 rounded text-[11px] font-mono-tabular bg-slate-900 border border-slate-700 hover:border-emerald-400 disabled:opacity-45 text-emerald-200 cursor-pointer select-none"
+                title="Anti-Normal Plane Burn -Inc (K / D-Pad Down)"
+              >
+                -Inc
+              </button>
+              <button
+                type="button"
+                onClick={onResetAttitude}
+                className={`px-2 py-1 rounded text-[11px] font-mono-tabular border cursor-pointer flex items-center gap-1 ${
+                  simState.manualAttitudeActive
+                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                    : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
+                }`}
+                title="Lock Attitude Back to Nadir (Triangle)"
+              >
+                <Compass className="w-3 h-3" />
+                Nadir
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowControlsModal(true)}
+              className="px-2.5 py-1 rounded text-[11px] font-mono-tabular bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-200 cursor-pointer flex items-center gap-1"
+            >
+              <Gamepad2 className="w-3.5 h-3.5 text-cyan-400" />
+              Controls
+            </button>
+          </div>
+        </div>
+
+        <div className="pointer-events-auto w-full lg:w-76 bg-[#0B111E]/95 border border-slate-700/80 rounded-xl p-2.5 shadow-xl shrink-0">
           <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-1.5">
             Flight Ops Event Feed
           </div>
