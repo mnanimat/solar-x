@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { SCENARIOS } from './missionCatalog';
 import {
   createDefaultDesign,
+  createOptimalDesign,
   createSimulationState,
   evaluateMissionDesign,
   evaluateMissionOutcome,
@@ -128,5 +129,28 @@ describe('Solar-X Coupled Mission Physics & Simulation Engine', () => {
     assert.ok(sim.inclinationOffsetDeg > 5);
     assert.ok(sim.deltaVRemainingMs < initialDv);
     assert.equal(sim.activeThrusterDir, 'prograde');
+  });
+
+  it('createOptimalDesign configures launch-ready architectures across all scenarios and clears deployment smoothly', () => {
+    for (const scenario of SCENARIOS) {
+      const opt = createOptimalDesign(scenario.id, scenario.recommendedDifficulty, true);
+      const evalOpt = evaluateMissionDesign(opt);
+      assert.equal(
+        evalOpt.canLaunch,
+        true,
+        `Optimal setup for ${scenario.id} failed: ${evalOpt.blockers.join(' | ')}`
+      );
+      assert.equal(opt.roleSignoffs.pi && opt.roleSignoffs.systems && opt.roleSignoffs.flight && opt.roleSignoffs.ops, true);
+    }
+
+    // Verify continuous orbital angle movement immediately upon entering deployment (no freeze/hitch)
+    const bio = createOptimalDesign('bionutrients-leo', 'beginner', false);
+    const evalBio = evaluateMissionDesign(bio);
+    let sim = createSimulationState(evalBio);
+    sim.phase = 'deployment';
+    sim.deployProgress = 0.05;
+    sim.orbitAngleRad = 0;
+    sim = stepSimulationTick(sim, bio, evalBio, 0.25, 1);
+    assert.ok(sim.orbitAngleRad > 0.1, 'Satellite must begin orbiting immediately during solar deployment');
   });
 });

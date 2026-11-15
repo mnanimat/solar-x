@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DIFFICULTIES, SCENARIOS, type DifficultyId } from './engine/missionCatalog';
 import {
   createDefaultDesign,
+  createOptimalDesign,
   createSimulationState,
   evaluateMissionDesign,
   evaluateMissionOutcome,
@@ -22,15 +23,21 @@ import {
   type GamepadLike,
   type PreviousGamepadButtons,
 } from './engine/flightControls';
-import { SpacecraftAndOrbit3D, type ViewportCameraPreset } from './components/SpacecraftAndOrbit3D';
+import {
+  SpacecraftAndOrbit3D,
+  type IntroTelemetry,
+  type ViewportCameraPreset,
+} from './components/SpacecraftAndOrbit3D';
+import { LaunchStageLanding } from './components/LaunchStageLanding';
 import { PresentationPage } from './components/PresentationPage';
 import { TitleScreen, type ArchivedMissionRun } from './components/TitleScreen';
 import { DesignWorkbench } from './components/DesignWorkbench';
 import { SimulationHUD } from './components/SimulationHUD';
 import { DebriefModal } from './components/DebriefModal';
+import { WindowControls } from './components/WindowControls';
 import { missionAudio } from './audio/missionAudio';
 
-type AppScreen = 'intro' | 'title' | 'workbench' | 'simulation';
+type AppScreen = 'starter' | 'intro' | 'title' | 'workbench' | 'simulation';
 
 const ARCHIVE_STORAGE_KEY = 'solarx_mission_archive_v1';
 
@@ -81,7 +88,7 @@ export default function App() {
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('autostart') === '1';
 
-  const [screen, setScreen] = useState<AppScreen>(autostart ? 'workbench' : 'intro');
+  const [screen, setScreen] = useState<AppScreen>(autostart ? 'workbench' : 'starter');
   const [design, setDesign] = useState<MissionDesign>(() =>
     createDefaultDesign('bionutrients-leo', 'beginner', false)
   );
@@ -91,6 +98,7 @@ export default function App() {
 
   const [simState, setSimState] = useState<SimulationState | null>(null);
   const [simPaused, setSimPaused] = useState(false);
+  const [pauseMinimized, setPauseMinimized] = useState(false);
   const [simSpeed, setSimSpeed] = useState(1);
   const [archive, setArchive] = useState<ArchivedMissionRun[]>(() => loadArchive());
   const archivedCurrentRunRef = useRef(false);
@@ -104,6 +112,7 @@ export default function App() {
   const [activeInputSource, setActiveInputSource] = useState<FlightControlInput['activeSource']>('idle');
 
   const flightInputRef = useRef<FlightControlInput>(createEmptyFlightInput());
+  const introTelemetryRef = useRef<IntroTelemetry | null>(null);
   const heldKeysRef = useRef<Set<string>>(new Set());
   const mouseHoldRef = useRef<Partial<FlightControlInput>>({});
   const prevGamepadButtonsRef = useRef<PreviousGamepadButtons>({
@@ -126,7 +135,7 @@ export default function App() {
 
   // Synchronize body.dataset.state for deterministic accessibility & automation hooks
   useEffect(() => {
-    if (screen === 'intro' || screen === 'title') {
+    if (screen === 'starter' || screen === 'intro' || screen === 'title') {
       document.body.dataset.state = 'title';
     } else if (screen === 'simulation' && outcome) {
       document.body.dataset.state = 'gameover';
@@ -136,6 +145,12 @@ export default function App() {
       document.body.dataset.state = 'playing';
     }
   }, [screen, simPaused, outcome]);
+
+  useEffect(() => {
+    if (!simPaused) {
+      setPauseMinimized(false);
+    }
+  }, [simPaused]);
 
   // Archive completed/failed run once
   useEffect(() => {
@@ -212,6 +227,36 @@ export default function App() {
     setSimState(initial);
     setScreen('simulation');
   }, [evaluation, previewTrajectory]);
+
+  const handleApplyOptimalPreset = useCallback(() => {
+    missionAudio.playSelect();
+    setPreviewTrajectory({ altKm: 0, incDeg: 0 });
+    setDesign((prev) => createOptimalDesign(prev.scenarioId, prev.difficultyId, prev.teamMode));
+  }, []);
+
+  const handleLaunchOptimalPreset = useCallback(() => {
+    const optDesign = createOptimalDesign(design.scenarioId, design.difficultyId, design.teamMode);
+    const optEval = evaluateMissionDesign(optDesign);
+    setPreviewTrajectory({ altKm: 0, incDeg: 0 });
+    setDesign(optDesign);
+
+    if (!optEval.canLaunch) {
+      missionAudio.playWarn();
+      setScreen('workbench');
+      return;
+    }
+
+    missionAudio.playLaunchIgnition();
+    triggerHapticPulse(pickActiveGamepad(), 0.45, 0.75, 280);
+    archivedCurrentRunRef.current = false;
+    prevPhaseRef.current = 'launch';
+    prevAnomalyIdRef.current = null;
+    setSimPaused(false);
+    setSimSpeed(1);
+    setViewPreset('orbit');
+    setSimState(createSimulationState(optEval));
+    setScreen('simulation');
+  }, [design.scenarioId, design.difficultyId, design.teamMode]);
 
   const handleResolveAnomaly = useCallback(
     (choice: AnomalyChoice) => {
@@ -501,17 +546,38 @@ export default function App() {
         evaluation={evaluation}
         simState={simState}
         flightInputRef={flightInputRef}
+        introTelemetryRef={introTelemetryRef}
         previewTrajectory={screen === 'workbench' ? previewTrajectory : undefined}
         onTrajectoryDrag={handleTrajectoryDrag}
       />
 
+      {screen === 'starter' && (
+        <LaunchStageLanding
+          selectedScenarioId={design.scenarioId}
+          selectedDifficultyId={design.difficultyId}
+          teamMode={design.teamMode}
+          introTelemetryRef={introTelemetryRef}
+          onSelectScenario={handleSelectScenario}
+          onSelectDifficulty={handleSelectDifficulty}
+          onToggleTeamMode={handleToggleTeamMode}
+          onContinueToHome={() => setScreen('intro')}
+          onLaunchOptimalDirect={handleLaunchOptimalPreset}
+        />
+      )}
+
       {screen === 'intro' && (
         <PresentationPage
+          introTelemetryRef={introTelemetryRef}
           onStartMissionSetup={() => {
             missionAudio.playSelect();
             setScreen('title');
           }}
           onQuickWorkbench={handleStartWorkbench}
+          onQuickLaunchOptimal={handleLaunchOptimalPreset}
+          onReplayStarter={() => {
+            missionAudio.playSelect();
+            setScreen('starter');
+          }}
         />
       )}
 
@@ -548,6 +614,8 @@ export default function App() {
             setPreviewTrajectory({ altKm: 0, incDeg: 0 });
             setDesign((prev) => createDefaultDesign(prev.scenarioId, prev.difficultyId, prev.teamMode));
           }}
+          onApplyOptimalPreset={handleApplyOptimalPreset}
+          onLaunchOptimalPreset={handleLaunchOptimalPreset}
           onChangeViewPreset={setViewPreset}
           onChangeExploded={setExplodedAmount}
           onToggleMute={handleToggleMute}
@@ -582,12 +650,40 @@ export default function App() {
         />
       )}
 
-      {/* Simulation Pause Overlay */}
-      {screen === 'simulation' && simPaused && !outcome && (
+      {/* Simulation Pause Overlay (with Minimize & Close) */}
+      {screen === 'simulation' && simPaused && !outcome &&
+        (pauseMinimized ? (
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-30 bg-[#0B111E]/95 border border-slate-700 rounded-xl px-4 py-2 shadow-2xl flex items-center gap-3">
+            <span className="font-display font-bold text-xs text-slate-100 uppercase tracking-wide">
+              Mission Paused (Day {Math.floor(simState?.elapsedDays ?? 0)})
+            </span>
+            <button
+              type="button"
+              onClick={() => setSimPaused(false)}
+              className="px-2.5 py-1 rounded bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold text-[11px] uppercase cursor-pointer"
+            >
+              Resume
+            </button>
+            <WindowControls
+              title="Pause Dialog"
+              minimized={true}
+              onToggleMinimize={() => setPauseMinimized(false)}
+              onClose={() => setSimPaused(false)}
+            />
+          </div>
+        ) : (
         <div className="fixed inset-0 z-30 bg-[#05080F]/75 flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-[#0B111E] border border-slate-700 rounded-2xl p-6 text-center shadow-2xl flex flex-col gap-4">
-            <div className="font-mono-tabular text-xs uppercase tracking-widest text-cyan-400">
-              {DIFFICULTIES.find((d) => d.id === design.difficultyId)?.name} Simulation
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-mono-tabular text-xs uppercase tracking-widest text-cyan-400">
+                {DIFFICULTIES.find((d) => d.id === design.difficultyId)?.name} Simulation
+              </div>
+              <WindowControls
+                title="Pause Dialog"
+                minimized={false}
+                onToggleMinimize={() => setPauseMinimized(true)}
+                onClose={() => setSimPaused(false)}
+              />
             </div>
             <h2 className="font-display text-2xl font-bold text-slate-50">Mission Paused</h2>
             <p className="text-xs text-slate-400">
@@ -616,7 +712,7 @@ export default function App() {
             </div>
           </div>
         </div>
-      )}
+        ))}
 
       {screen === 'simulation' && simState && outcome && (
         <DebriefModal

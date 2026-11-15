@@ -30,14 +30,17 @@ import {
   Compass,
   Cpu,
   Layers,
+  Maximize2,
   Microscope,
   Radio,
   Rocket,
   RotateCcw,
   Sliders,
+  Sparkles,
   Volume2,
   VolumeX,
 } from 'lucide-react';
+import { WindowControls } from './WindowControls';
 
 type CmlTab = 'cml1' | 'cml2' | 'cml3' | 'cml4';
 type CenterMode = '3d-assembly' | '3d-orbit' | '2d-blueprint';
@@ -53,6 +56,8 @@ interface DesignWorkbenchProps {
   onResetTrajectoryPreview?: () => void;
   onUpdateDesign: (updater: (prev: MissionDesign) => MissionDesign) => void;
   onResetPreset: () => void;
+  onApplyOptimalPreset: () => void;
+  onLaunchOptimalPreset: () => void;
   onChangeViewPreset: (preset: ViewportCameraPreset) => void;
   onChangeExploded: (val: number) => void;
   onToggleMute: () => void;
@@ -71,6 +76,8 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
   onResetTrajectoryPreview,
   onUpdateDesign,
   onResetPreset,
+  onApplyOptimalPreset,
+  onLaunchOptimalPreset,
   onChangeViewPreset,
   onChangeExploded,
   onToggleMute,
@@ -83,6 +90,12 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
   );
   const [mobileMarginsOpen, setMobileMarginsOpen] = useState(false);
   const [showFailureModal, setShowFailureModal] = useState(false);
+  const [failureMinimized, setFailureMinimized] = useState(false);
+  const [designerMinimized, setDesignerMinimized] = useState(false);
+  const [designerClosed, setDesignerClosed] = useState(false);
+  const [telemetryMinimized, setTelemetryMinimized] = useState(false);
+  const [telemetryClosed, setTelemetryClosed] = useState(false);
+  const [blueprintMinimized, setBlueprintMinimized] = useState(false);
 
   const activeRoleCfg = TEAM_ROLES.find((r) => r.id === design.activeRole) ?? TEAM_ROLES[0];
   const signoffCount = Object.values(design.roleSignoffs).filter(Boolean).length;
@@ -219,6 +232,16 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
 
           <button
             type="button"
+            onClick={onApplyOptimalPreset}
+            className="px-2.5 py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/50 hover:bg-emerald-500/25 text-emerald-300 text-xs font-medium flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            title="Auto-configure optimal spacecraft, rocket & verification"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Auto-Setup</span>
+          </button>
+
+          <button
+            type="button"
             onClick={onResetPreset}
             className="p-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-300 cursor-pointer"
             title="Reset to Baseline Architecture"
@@ -242,6 +265,7 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
                 onLaunchMission();
               } else {
                 missionAudio.playWarn();
+                setFailureMinimized(false);
                 setShowFailureModal(true);
               }
             }}
@@ -259,10 +283,42 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
 
       {/* Main 3-Zone Workspace */}
       <div className="flex-1 min-h-0 flex relative">
-        {/* Left CML 1–4 Design Rail */}
-        <aside className="pointer-events-auto w-full sm:w-[390px] lg:w-[410px] shrink-0 bg-[#0B111E]/95 border-r border-slate-800 flex flex-col min-h-0">
-          {/* CML Tab Bar */}
-          <div className="grid grid-cols-4 border-b border-slate-800 bg-[#070B13]">
+        {/* Left CML 1–4 Design Rail (with Minimize & Close) */}
+        {designerClosed ? (
+          <div className="pointer-events-auto absolute top-3 left-3 z-20">
+            <button
+              type="button"
+              onClick={() => setDesignerClosed(false)}
+              className="px-3 py-1.5 rounded-lg bg-[#0B111E]/95 border border-slate-700 hover:border-cyan-400 text-slate-200 text-xs font-medium flex items-center gap-1.5 shadow-xl cursor-pointer"
+            >
+              <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />
+              Open CML Designer
+            </button>
+          </div>
+        ) : (
+          <aside
+            className={`pointer-events-auto w-full sm:w-[390px] lg:w-[410px] shrink-0 bg-[#0B111E]/95 border-r border-slate-800 flex flex-col ${
+              designerMinimized ? 'self-start border-b rounded-br-xl' : 'min-h-0'
+            }`}
+          >
+            {/* Window Title Bar with Minimize & Close */}
+            <div className="flex items-center justify-between px-3 py-1.5 bg-[#060910] border-b border-slate-800">
+              <div className="flex items-center gap-2 text-[11px] font-mono-tabular uppercase tracking-wider text-cyan-300">
+                <Cpu className="w-3.5 h-3.5" />
+                <span>CML 1–4 Designer</span>
+              </div>
+              <WindowControls
+                title="CML Designer"
+                minimized={designerMinimized}
+                onToggleMinimize={() => setDesignerMinimized((m) => !m)}
+                onClose={() => setDesignerClosed(true)}
+              />
+            </div>
+
+            {!designerMinimized && (
+              <>
+                {/* CML Tab Bar */}
+                <div className="grid grid-cols-4 border-b border-slate-800 bg-[#070B13]">
             {tabs.map((t) => {
               const active = activeTab === t.id;
               const ownedByActiveRole = design.teamMode && activeRoleCfg.ownedTabs.includes(t.id);
@@ -800,7 +856,10 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
               </>
             )}
           </div>
+              </>
+            )}
         </aside>
+        )}
 
         {/* Center Unobstructed 3D / 2D Blueprint Viewport */}
         <main className="flex-1 min-w-0 relative flex flex-col justify-between p-3 pointer-events-none">
@@ -845,14 +904,28 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
             )}
           </div>
 
-          {/* 2D Blueprint & Link Sheet Mode (when toggled) */}
+          {/* 2D Blueprint & Link Sheet Mode (when toggled, with Minimize & Close) */}
           {centerMode === '2d-blueprint' && (
-            <div className="pointer-events-auto m-auto w-full max-w-2xl bg-[#0B111E]/95 border border-slate-700 rounded-2xl p-5 shadow-2xl flex flex-col gap-4 max-h-[82vh] overflow-y-auto">
-              <GroundTrack2D
-                orbit={evaluation.orbit}
-                groundNetwork={evaluation.groundNetwork}
-                inclinationOffsetDeg={previewTrajectory.incDeg}
-              />
+            <div className="pointer-events-auto m-auto w-full max-w-2xl bg-[#0B111E]/95 border border-slate-700 rounded-2xl p-4 sm:p-5 shadow-2xl flex flex-col gap-4 max-h-[82vh] overflow-y-auto">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                <div className="text-xs font-mono-tabular uppercase tracking-wider text-cyan-300 font-semibold">
+                  2D Ground Track &amp; Master Link Budget
+                </div>
+                <WindowControls
+                  title="2D Track & Link Sheet"
+                  minimized={blueprintMinimized}
+                  onToggleMinimize={() => setBlueprintMinimized((m) => !m)}
+                  onClose={() => handleCenterSwitch('3d-assembly')}
+                />
+              </div>
+
+              {!blueprintMinimized && (
+                <>
+                  <GroundTrack2D
+                    orbit={evaluation.orbit}
+                    groundNetwork={evaluation.groundNetwork}
+                    inclinationOffsetDeg={previewTrajectory.incDeg}
+                  />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <TradeSpaceRadar2D evaluation={evaluation} />
@@ -894,6 +967,8 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
                   </div>
                 </div>
               </div>
+                </>
+              )}
             </div>
           )}
 
@@ -943,13 +1018,54 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
           )}
         </main>
 
-        {/* Right Coupled Systems Telemetry & CML Readiness Rail */}
-        <aside
-          className={`pointer-events-auto ${
-            mobileMarginsOpen ? 'flex fixed right-0 top-14 bottom-0 z-30 w-80' : 'hidden xl:flex w-[310px]'
-          } shrink-0 bg-[#0B111E]/95 border-l border-slate-800 flex-col gap-3 p-3.5 overflow-y-auto`}
-        >
-          <TradeSpaceRadar2D evaluation={evaluation} />
+        {/* Right Coupled Systems Telemetry & CML Readiness Rail (with Minimize & Close) */}
+        {telemetryClosed ? (
+          <div className="pointer-events-auto absolute top-3 right-3 z-20 hidden xl:block">
+            <button
+              type="button"
+              onClick={() => setTelemetryClosed(false)}
+              className="px-3 py-1.5 rounded-lg bg-[#0B111E]/95 border border-slate-700 hover:border-cyan-400 text-slate-200 text-xs font-medium flex items-center gap-1.5 shadow-xl cursor-pointer"
+            >
+              <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />
+              Open Telemetry
+            </button>
+          </div>
+        ) : (
+          <aside
+            className={`pointer-events-auto ${
+              mobileMarginsOpen ? 'flex fixed right-0 top-14 bottom-0 z-30 w-80' : 'hidden xl:flex w-[310px]'
+            } shrink-0 bg-[#0B111E]/95 border-l border-slate-800 flex-col gap-3 p-3.5 ${
+              telemetryMinimized ? 'self-start border-b rounded-bl-xl' : 'overflow-y-auto'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-mono-tabular uppercase tracking-wider text-cyan-300">
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Coupled Telemetry</span>
+              </div>
+              <WindowControls
+                title="Coupled Telemetry"
+                minimized={telemetryMinimized}
+                onToggleMinimize={() => setTelemetryMinimized((m) => !m)}
+                onClose={() => {
+                  setMobileMarginsOpen(false);
+                  setTelemetryClosed(true);
+                }}
+              />
+            </div>
+
+            {telemetryMinimized ? (
+              <div className="flex items-center justify-between text-xs font-mono-tabular">
+                <span className={evaluation.canLaunch ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
+                  {evaluation.canLaunch ? 'LAUNCH READY' : `${evaluation.blockers.length} BLOCKER(S)`}
+                </span>
+                <span className="text-slate-300">
+                  {evaluation.dryMassKg.toFixed(1)}kg · ${evaluation.totalCostM.toFixed(1)}M
+                </span>
+              </div>
+            ) : (
+              <>
+                <TradeSpaceRadar2D evaluation={evaluation} />
 
           {/* Coupled Resource Meters */}
           <div className="flex flex-col gap-2 bg-[#070B13] border border-slate-800 rounded-lg p-3 font-mono-tabular text-xs">
@@ -1049,11 +1165,39 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
               </div>
             )}
           </div>
+              </>
+            )}
         </aside>
+        )}
       </div>
 
-      {/* Structural Engineering & Launch Authorization Failure Alert Modal */}
-      {showFailureModal && (
+      {/* Structural Engineering & Launch Authorization Failure Alert Modal (with Minimize & Close) */}
+      {showFailureModal &&
+        (failureMinimized ? (
+          <div className="pointer-events-auto fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-[#0B111E]/95 border border-rose-500/80 rounded-xl px-4 py-2.5 shadow-2xl flex items-center gap-3">
+            <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="text-xs font-semibold text-rose-100 whitespace-nowrap">
+              Structural Alert ({evaluation.blockers.length} Blockers)
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                onApplyOptimalPreset();
+                setShowFailureModal(false);
+              }}
+              className="px-2.5 py-1 rounded bg-emerald-500/20 border border-emerald-400/60 text-emerald-200 text-[11px] font-semibold cursor-pointer"
+            >
+              Auto-Setup
+            </button>
+            <WindowControls
+              title="Structural Alert"
+              minimized={true}
+              variant="rose"
+              onToggleMinimize={() => setFailureMinimized(false)}
+              onClose={() => setShowFailureModal(false)}
+            />
+          </div>
+        ) : (
         <div
           className="pointer-events-auto fixed inset-0 z-50 bg-[#05080F]/80 flex items-center justify-center p-4"
           role="dialog"
@@ -1075,13 +1219,13 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
                   </h3>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowFailureModal(false)}
-                className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-xs text-slate-300 cursor-pointer"
-              >
-                Close
-              </button>
+              <WindowControls
+                title="Structural Alert"
+                minimized={false}
+                variant="rose"
+                onToggleMinimize={() => setFailureMinimized(true)}
+                onClose={() => setShowFailureModal(false)}
+              />
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
@@ -1141,22 +1285,34 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    onApplyOptimalPreset();
+                    setShowFailureModal(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-400/60 hover:bg-emerald-500/30 text-xs font-semibold text-emerald-200 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Auto-Setup Optimal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowFailureModal(false);
+                    onLaunchOptimalPreset();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-xs font-display font-bold uppercase text-slate-950 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Rocket className="w-3.5 h-3.5" />
+                  Auto-Setup &amp; Launch
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
                     setActiveTab('cml2');
                     setShowFailureModal(false);
                   }}
                   className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-xs text-cyan-300 cursor-pointer"
                 >
-                  Open Bus &amp; Rocket (CML 2)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('cml3');
-                    setShowFailureModal(false);
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-xs text-cyan-300 cursor-pointer"
-                >
-                  Open Science (CML 3)
+                  Bus &amp; Rocket
                 </button>
                 <button
                   type="button"
@@ -1166,7 +1322,7 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
                   }}
                   className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-xs text-cyan-300 cursor-pointer"
                 >
-                  Open Orbit &amp; Comms (CML 4)
+                  Orbit &amp; Comms
                 </button>
               </div>
               <button
@@ -1174,12 +1330,12 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
                 onClick={() => setShowFailureModal(false)}
                 className="px-4 py-1.5 rounded-lg bg-rose-500 hover:bg-rose-400 text-slate-950 font-display font-bold text-xs uppercase cursor-pointer"
               >
-                Acknowledge Hold
+                Close
               </button>
             </div>
           </div>
         </div>
-      )}
+        ))}
     </div>
   );
 };

@@ -5,7 +5,8 @@ import {
   TEAM_ROLES,
   type DifficultyId,
 } from '../engine/missionCatalog';
-import { Rocket, Users, User, Trophy, ChevronRight, ShieldAlert, ArrowLeft } from 'lucide-react';
+import { Rocket, Users, User, Trophy, ChevronRight, ShieldAlert, ArrowLeft, Maximize2 } from 'lucide-react';
+import { WindowControls } from './WindowControls';
 
 export interface ArchivedMissionRun {
   id: string;
@@ -43,36 +44,88 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenPresentation,
 }) => {
   const [showArchive, setShowArchive] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [closed, setClosed] = useState(false);
   const scenario = SCENARIOS.find((s) => s.id === selectedScenarioId) ?? SCENARIOS[0];
   const difficulty = DIFFICULTIES.find((d) => d.id === selectedDifficultyId) ?? DIFFICULTIES[0];
+
+  if (closed) {
+    return (
+      <div className="fixed bottom-4 left-4 z-20 pointer-events-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setClosed(false)}
+          className="px-3.5 py-2 rounded-xl bg-[#0B111E]/95 border border-slate-700 hover:border-cyan-400 text-slate-100 text-xs font-medium flex items-center gap-2 shadow-xl cursor-pointer"
+        >
+          <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />
+          Open Mission Setup
+        </button>
+        <button
+          type="button"
+          data-start="true"
+          onClick={onStartMission}
+          className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold text-xs uppercase flex items-center gap-1.5 shadow-xl cursor-pointer"
+        >
+          <Rocket className="w-3.5 h-3.5" />
+          Workbench
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-20 pointer-events-none flex items-center justify-start p-4 sm:p-8">
       <div className="pointer-events-auto w-full max-w-[470px] bg-[#0B111E]/95 border border-slate-700/80 rounded-xl p-5 shadow-2xl flex flex-col gap-3.5 max-h-[95vh] overflow-y-auto">
-        {/* Developer Lockup & Game Title */}
+        {/* Developer Lockup, Game Title & Window Controls */}
         <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-cyan-400">
+          <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-cyan-400">
             <span>SOLAR-X DEVELOPMENT TEAM</span>
-            {onOpenPresentation ? (
-              <button
-                type="button"
-                onClick={onOpenPresentation}
-                className="text-slate-300 hover:text-cyan-300 flex items-center gap-1 cursor-pointer transition-colors"
-              >
-                <ArrowLeft className="w-3 h-3" />
-                Game Overview
-              </button>
-            ) : (
-              <span className="text-slate-400">CML 1–4 SIMULATOR</span>
-            )}
+            <div className="flex items-center gap-2">
+              {onOpenPresentation && (
+                <button
+                  type="button"
+                  onClick={onOpenPresentation}
+                  className="text-slate-300 hover:text-cyan-300 flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  <ArrowLeft className="w-3 h-3" />
+                  Home
+                </button>
+              )}
+              <WindowControls
+                title="Mission Setup"
+                minimized={minimized}
+                onToggleMinimize={() => setMinimized((m) => !m)}
+                onClose={() => setClosed(true)}
+              />
+            </div>
           </div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-50 leading-none">
             SPACE MISSION ARCHITECT
           </h1>
-          <p className="text-xs text-slate-300 leading-snug mt-0.5">
-            Design, balance, and fly real NASA-grounded space missions with coupled mass, power, RF link, orbit, and budget physics.
-          </p>
+          {!minimized && (
+            <p className="text-xs text-slate-300 leading-snug mt-0.5">
+              Design, balance, and fly real NASA-grounded space missions with coupled mass, power, RF link, orbit, and budget physics.
+            </p>
+          )}
         </div>
+
+        {minimized ? (
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800">
+            <div className="text-xs text-slate-300 truncate">
+              <span className="font-semibold text-cyan-300">{scenario.title}</span> · {difficulty.name}
+            </div>
+            <button
+              type="button"
+              data-start="true"
+              onClick={onStartMission}
+              className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold text-xs uppercase flex items-center gap-1 shrink-0 cursor-pointer"
+            >
+              Workbench
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <>
 
         {/* Scenario Selector */}
         <div className="flex flex-col gap-1.5">
@@ -250,6 +303,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <ShieldAlert className="w-3 h-3" /> NASA CML 1–4 &amp; CUBESAT 101
           </span>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

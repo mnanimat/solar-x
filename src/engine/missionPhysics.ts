@@ -325,6 +325,96 @@ export function createDefaultDesign(
   };
 }
 
+/**
+ * Computes an optimal, launch-ready spacecraft & launch vehicle setup for the
+ * given scenario and difficulty tier, clearing all CML 1-4 safety gates.
+ */
+export function createOptimalDesign(
+  scenarioId = 'bionutrients-leo',
+  difficultyId: DifficultyId = 'beginner',
+  teamMode = false
+): MissionDesign {
+  const base = createDefaultDesign(scenarioId, difficultyId, teamMode);
+
+  // Scenario-specific optimal refinements over baseline
+  const optimalTweaks: Record<string, Partial<MissionDesign>> = {
+    'bionutrients-leo': {
+      busId: difficultyId === 'advanced' || difficultyId === 'expert' ? 'bus-12u' : 'bus-6u',
+      batteryId: 'bat-ul-180',
+      solarId: difficultyId === 'advanced' || difficultyId === 'expert' ? 'solar-4wing' : 'solar-2wing',
+      commsId: 'comm-sband',
+    },
+    'helio-sworm': {
+      busId: difficultyId === 'expert' ? 'bus-espa' : 'bus-12u',
+      solarId: difficultyId === 'expert' ? 'solar-espa' : 'solar-4wing',
+      batteryId: difficultyId === 'expert' ? 'bat-espa-900' : 'bat-ul-180',
+      launchVehicleId: difficultyId === 'expert' ? 'lv-f9-rideshare' : 'lv-electron',
+    },
+    'lunar-trailblazer': {
+      busId: 'bus-espa',
+      solarId: 'solar-espa',
+      batteryId: 'bat-espa-900',
+      commsId: 'comm-xband',
+      groundNetworkId: 'gs-nsn',
+    },
+    'mars-aeronomy': {
+      busId: 'bus-discovery',
+      solarId: 'solar-planetary',
+      batteryId: 'bat-espa-900',
+      commsId: 'comm-kaband',
+      groundNetworkId: 'gs-dsn',
+    },
+    'europa-cryo': {
+      busId: 'bus-flagship',
+      solarId: 'solar-mega',
+      batteryId: 'bat-deep-4200',
+      materialId: 'mat-titanium-vault',
+      commsId: 'comm-kaband',
+      groundNetworkId: 'gs-dsn',
+      launchVehicleId: 'lv-vulcan',
+    },
+  };
+
+  let candidate: MissionDesign = {
+    ...base,
+    ...(optimalTweaks[scenarioId] ?? {}),
+    roleSignoffs: {
+      pi: true,
+      systems: true,
+      flight: true,
+      ops: true,
+    },
+  };
+
+  let ev = evaluateMissionDesign(candidate);
+  if (ev.canLaunch && ev.warnings.length === 0) {
+    return candidate;
+  }
+
+  // Fallback sweep: if tight Flagship budget or margin leaves a blocker, search cheapest valid LV/bus/battery upgrade
+  const candidateLvs = LAUNCH_VEHICLES.filter((lv) =>
+    ev.orbit.targetBody === 'earth' ? lv.maxMassLeoKg >= ev.dryMassKg : lv.maxMassDeepSpaceKg >= ev.dryMassKg
+  ).sort((a, b) => a.costM - b.costM);
+
+  for (const lv of candidateLvs) {
+    for (const bat of BATTERIES) {
+      const testDesign: MissionDesign = {
+        ...candidate,
+        launchVehicleId: lv.id,
+        batteryId: bat.id,
+      };
+      const testEv = evaluateMissionDesign(testDesign);
+      if (testEv.canLaunch && (testEv.warnings.length < ev.warnings.length || !ev.canLaunch)) {
+        candidate = testDesign;
+        ev = testEv;
+        if (testEv.warnings.length === 0) return candidate;
+      }
+    }
+  }
+
+  return candidate;
+}
+
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
@@ -1018,10 +1108,15 @@ export function stepSimulationTick(
     return next;
   }
 
-  // Phase 2: Solar Wing & Antenna Deployment (takes ~3s at 1x)
+  // Phase 2: Solar Wing & Antenna Deployment (continuous orbital motion immediately on release!)
   if (prev.phase === 'deployment') {
     const deployProgress = Math.min(1, prev.deployProgress + dtSeconds * 0.35 * Math.min(speedMultiplier, 4));
     next.deployProgress = deployProgress;
+    const keplerSpeedFactor = clamp(1 - next.altitudeOffsetKm / 1800, 0.65, 1.35);
+    const orbitRateScale = 0.65 + 0.35 * deployProgress;
+    next.orbitAngleRad =
+      (prev.orbitAngleRad + dtSeconds * 1.15 * keplerSpeedFactor * orbitRateScale * Math.sqrt(speedMultiplier)) %
+      (Math.PI * 2);
     if (deployProgress >= 1) {
       next.phase = 'operations';
       next.eventLog = [

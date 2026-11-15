@@ -1,4 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { IntroTelemetry } from './SpacecraftAndOrbit3D';
+import { getAscentTelemetry } from '../engine/launchTrajectory';
+import { missionAudio } from '../audio/missionAudio';
 import {
   AlertOctagon,
   ArrowRight,
@@ -8,18 +11,25 @@ import {
   Gamepad2,
   Keyboard,
   Mouse,
+  Play,
   Rocket,
+  RotateCcw,
   Sliders,
+  Sparkles,
   Users,
 } from 'lucide-react';
 
 interface PresentationPageProps {
+  introTelemetryRef: React.MutableRefObject<IntroTelemetry | null>;
   onStartMissionSetup: () => void;
   onQuickWorkbench: () => void;
+  onQuickLaunchOptimal?: () => void;
+  onReplayStarter?: () => void;
 }
 
 type LoopStepId = 'target' | 'build' | 'validate' | 'launch';
 type InputTabId = 'keyboard' | 'mouse' | 'controller';
+type StarterStage = 'preview' | 'launching' | 'anomaly' | 'complete';
 
 const LOOP_STEPS: Array<{
   id: LoopStepId;
@@ -64,11 +74,170 @@ const LOOP_STEPS: Array<{
 ];
 
 export const PresentationPage: React.FC<PresentationPageProps> = ({
+  introTelemetryRef,
   onStartMissionSetup,
   onQuickWorkbench,
+  onQuickLaunchOptimal,
+  onReplayStarter,
 }) => {
   const [activeStep, setActiveStep] = useState<LoopStepId>('target');
   const [inputTab, setInputTab] = useState<InputTabId>('keyboard');
+
+  // Playable Hero Starter Mission + Continuous Live 3D Rocket Launch Animation
+  const [starterProfile, setStarterProfile] = useState<'bionutrients' | 'helio'>('bionutrients');
+  const [starterStage, setStarterStage] = useState<StarterStage>('preview');
+  const [starterScore, setStarterScore] = useState(96);
+  const [starterSummary, setStarterSummary] = useState('');
+  const [hudTelemetry, setHudTelemetry] = useState({
+    phase: 'launch' as 'launch' | 'deployment' | 'operations',
+    launchProgress: 0,
+    deployProgress: 0,
+    altitudeKm: 0,
+    velocityKms: 0,
+    inSpace: false,
+    milestoneLabel: 'T+0 LIFTOFF · PAD CLEAR',
+    stage1Separated: false,
+    fairingSeparated: false,
+    payloadSeparated: false,
+  });
+  const stageRef = useRef<StarterStage>('preview');
+  stageRef.current = starterStage;
+  const profileRef = useRef<'bionutrients' | 'helio'>('bionutrients');
+  profileRef.current = starterProfile;
+
+  useEffect(() => {
+    let rafId = 0;
+    let lastTs = performance.now();
+    let hudAccum = 0;
+    let opsElapsedAfterDeploy = 0;
+    let state: IntroTelemetry = {
+      phase: 'launch',
+      launchProgress: 0.04,
+      deployProgress: 0,
+      orbitAngleRad: 0,
+    };
+    introTelemetryRef.current = { ...state };
+
+    const resetCycle = () => {
+      state = {
+        phase: 'launch',
+        launchProgress: 0,
+        deployProgress: 0,
+        orbitAngleRad: 0,
+      };
+      opsElapsedAfterDeploy = 0;
+      introTelemetryRef.current = { ...state };
+    };
+
+    const step = (now: number) => {
+      const dt = Math.min(0.05, Math.max(0.001, (now - lastTs) / 1000));
+      lastTs = now;
+      const curStage = stageRef.current;
+
+      if (state.phase === 'launch') {
+        const rate = curStage === 'preview' ? 0.16 : 0.21;
+        state.launchProgress = Math.min(1, state.launchProgress + dt * rate);
+        if (state.launchProgress >= 1) {
+          state.phase = 'deployment';
+          state.deployProgress = 0;
+          state.orbitAngleRad = 0;
+          if (curStage === 'launching') {
+            missionAudio.playStageSep();
+          }
+        }
+      } else if (state.phase === 'deployment') {
+        state.deployProgress = Math.min(1, state.deployProgress + dt * 0.52);
+        const orbitRate = 0.65 + 0.35 * state.deployProgress;
+        state.orbitAngleRad = (state.orbitAngleRad + dt * 0.85 * orbitRate) % (Math.PI * 2);
+        if (state.deployProgress >= 1) {
+          state.phase = 'operations';
+          opsElapsedAfterDeploy = 0;
+        }
+      } else {
+        state.orbitAngleRad = (state.orbitAngleRad + dt * 0.85) % (Math.PI * 2);
+        opsElapsedAfterDeploy += dt;
+        if (curStage === 'preview' && opsElapsedAfterDeploy >= 3.2) {
+          resetCycle();
+        } else if (curStage === 'launching' && opsElapsedAfterDeploy >= 1.1) {
+          missionAudio.playAnomaly();
+          setStarterStage('anomaly');
+          stageRef.current = 'anomaly';
+        }
+      }
+
+      introTelemetryRef.current = { ...state };
+
+      hudAccum += dt;
+      if (hudAccum >= 0.08) {
+        hudAccum = 0;
+        const targetAlt = profileRef.current === 'bionutrients' ? 410 : 600;
+        const t = getAscentTelemetry(
+          state.launchProgress,
+          state.deployProgress,
+          state.phase,
+          targetAlt,
+          'earth'
+        );
+        setHudTelemetry({
+          phase: state.phase,
+          launchProgress: state.launchProgress,
+          deployProgress: state.deployProgress,
+          altitudeKm: t.altitudeKm,
+          velocityKms: t.velocityKms,
+          inSpace: t.inSpace,
+          milestoneLabel: t.milestoneLabel,
+          stage1Separated: t.stage1Separated,
+          fairingSeparated: t.fairingSeparated,
+          payloadSeparated: t.payloadSeparated,
+        });
+      }
+
+      rafId = window.requestAnimationFrame(step);
+    };
+
+    rafId = window.requestAnimationFrame(step);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      introTelemetryRef.current = null;
+    };
+  }, [introTelemetryRef]);
+
+  const startStarterMission = () => {
+    missionAudio.playLaunchIgnition();
+    introTelemetryRef.current = {
+      phase: 'launch',
+      launchProgress: 0,
+      deployProgress: 0,
+      orbitAngleRad: 0,
+    };
+    setHudTelemetry({
+      phase: 'launch',
+      launchProgress: 0,
+      deployProgress: 0,
+      altitudeKm: 0,
+      velocityKms: 0,
+      inSpace: false,
+      milestoneLabel: 'T+0 LIFTOFF · PAD CLEAR',
+      stage1Separated: false,
+      fairingSeparated: false,
+      payloadSeparated: false,
+    });
+    setStarterStage('launching');
+    stageRef.current = 'launching';
+  };
+
+  const resolveStarterAnomaly = (choice: 'power' | 'science') => {
+    missionAudio.playSuccess();
+    if (choice === 'power') {
+      setStarterScore(96);
+      setStarterSummary('Arrays sun-locked through orbital eclipse · +24% Power Reserve.');
+    } else {
+      setStarterScore(94);
+      setStarterSummary('High-gain science downlink captured · +18% Bonus Data.');
+    }
+    setStarterStage('complete');
+    stageRef.current = 'complete';
+  };
 
   // Interactive Coupled Trade-Off Mini-Lab state
   const [payloadChoice, setPayloadChoice] = useState<'light' | 'heavy'>('light');
@@ -152,82 +321,280 @@ export const PresentationPage: React.FC<PresentationPageProps> = ({
           </a>
         </nav>
 
-        <div className="flex items-center shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          {onReplayStarter && (
+            <button
+              type="button"
+              onClick={onReplayStarter}
+              className="hidden sm:flex px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-200 font-medium text-xs items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+            >
+              <Rocket className="w-3.5 h-3.5 text-cyan-400" />
+              Watch Launch
+            </button>
+          )}
           <button
             type="button"
+            data-home-play="true"
             onClick={onStartMissionSetup}
             className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold text-xs sm:text-sm uppercase tracking-wide whitespace-nowrap shrink-0 cursor-pointer transition-colors"
           >
-            Play Game
+            Play Full Game
           </button>
         </div>
       </header>
 
-      {/* HERO SECTION: Live 3D Planet & Spacecraft visible behind clean left gradient scrim */}
+      {/* HERO SECTION: Live 3D Rocket Launch -> Space -> Satellite Release visible on the right */}
       <section
         id="overview"
-        className="relative min-h-[calc(100vh-4rem)] flex items-center bg-gradient-to-r from-[#070A10] via-[#070A10]/75 via-45% to-transparent px-4 sm:px-8 py-12"
+        className="relative min-h-[calc(100vh-4rem)] flex items-center bg-gradient-to-r from-[#070A10] via-[#070A10]/80 via-48% to-transparent px-4 sm:px-8 py-10"
       >
         <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          <div className="lg:col-span-7 flex flex-col gap-5">
+          <div className="lg:col-span-6 flex flex-col gap-4">
             <div className="flex items-center gap-2 text-xs font-mono-tabular text-cyan-300">
               <span>Solar-X</span>
               <span aria-hidden="true">·</span>
               <span>NASA Space Apps Challenge 13</span>
             </div>
 
-            <h1 className="font-display font-bold text-4xl sm:text-5xl lg:text-[3.5rem] tracking-tight text-slate-50 leading-[1.06] text-balance max-w-2xl">
+            <h1 className="font-display font-bold text-3xl sm:text-5xl tracking-tight text-slate-50 leading-[1.06] text-balance max-w-xl">
               Design the Spacecraft. Launch the Mission.
             </h1>
 
-            <p className="text-base sm:text-lg text-slate-300 max-w-xl leading-relaxed">
-              An interactive 2D &amp; 3D space engineering game. Choose real NASA-grounded payloads, balance mass, power, radio link, and budget, and fly from launchpad to orbit.
+            <p className="text-sm sm:text-base text-slate-300 max-w-lg leading-relaxed">
+              Watch the rocket lift off from the surface, cross into space, deploy your satellite, and play the starter mission right here before entering full engineering control.
             </p>
 
-            <div className="flex flex-wrap items-center gap-3 pt-1">
+            {/* Interactive Playable Starter Mission Card */}
+            <div className="bg-[#0B111E]/95 border border-slate-700/90 rounded-xl p-4 flex flex-col gap-3 max-w-xl shadow-2xl">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                <div className="flex items-center gap-2 font-display font-bold text-sm text-slate-50">
+                  <Rocket className="w-4 h-4 text-cyan-400" />
+                  <span>
+                    {starterStage === 'preview'
+                      ? 'Starter Mission · Live Launch Preview'
+                      : starterStage === 'launching'
+                        ? 'Starter Mission · In-Flight Ascent'
+                        : starterStage === 'anomaly'
+                          ? 'In-Orbit Decision · Eclipse Alert'
+                          : 'Starter Mission Complete'}
+                  </span>
+                </div>
+                <span
+                  className={`font-mono-tabular text-[11px] font-semibold ${
+                    hudTelemetry.inSpace ? 'text-cyan-300' : 'text-amber-300'
+                  }`}
+                >
+                  {hudTelemetry.inSpace ? 'IN SPACE' : 'ATMOSPHERE'}
+                </span>
+              </div>
+
+              {/* Compact Telemetry Readout during Preview / Launching */}
+              <div className="grid grid-cols-3 gap-2 font-mono-tabular text-xs bg-[#070A10] border border-slate-800 rounded-lg px-3 py-2">
+                <div>
+                  <div className="text-[10px] text-slate-500">ALTITUDE</div>
+                  <div className="text-slate-100 font-semibold">{Math.round(hudTelemetry.altitudeKm)} km</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-500">VELOCITY</div>
+                  <div className="text-cyan-300 font-semibold">{hudTelemetry.velocityKms.toFixed(2)} km/s</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-500">STAGE</div>
+                  <div className="text-emerald-300 font-semibold truncate">
+                    {hudTelemetry.payloadSeparated
+                      ? 'Satellite Orbit'
+                      : hudTelemetry.fairingSeparated
+                        ? 'Fairing Split'
+                        : hudTelemetry.stage1Separated
+                          ? 'Stage 2 Burn'
+                          : 'Stage 1 Ascent'}
+                  </div>
+                </div>
+              </div>
+
+              {starterStage === 'preview' && (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setStarterProfile('bionutrients')}
+                      className={`p-2.5 rounded-lg border text-left cursor-pointer transition-colors ${
+                        starterProfile === 'bionutrients'
+                          ? 'bg-cyan-500/15 border-cyan-400 text-slate-50'
+                          : 'bg-[#070A10] border-slate-800 text-slate-300 hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold">Bio-Lab CubeSat</div>
+                      <div className="font-mono-tabular text-[11px] text-cyan-300">Falcon 9 · 410 km LEO</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStarterProfile('helio')}
+                      className={`p-2.5 rounded-lg border text-left cursor-pointer transition-colors ${
+                        starterProfile === 'helio'
+                          ? 'bg-cyan-500/15 border-cyan-400 text-slate-50'
+                          : 'bg-[#070A10] border-slate-800 text-slate-300 hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold">Solar Flare Scout</div>
+                      <div className="font-mono-tabular text-[11px] text-amber-300">Electron · 600 km SSO</div>
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      type="button"
+                      data-starter-play="true"
+                      onClick={startStarterMission}
+                      className="flex-1 min-w-[200px] px-5 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold text-sm uppercase tracking-wide flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      Play Starter Mission
+                    </button>
+
+                    {onQuickLaunchOptimal && (
+                      <button
+                        type="button"
+                        onClick={onQuickLaunchOptimal}
+                        className="px-4 py-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/50 hover:bg-emerald-500/25 text-emerald-300 font-semibold text-xs flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shrink-0"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Auto-Setup &amp; Launch
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {starterStage === 'launching' && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-xs font-mono-tabular">
+                    <span className="text-cyan-300 font-semibold">{hudTelemetry.milestoneLabel}</span>
+                    <span className="text-slate-400">
+                      {Math.round((hudTelemetry.phase === 'launch' ? hudTelemetry.launchProgress : 1) * 100)}%
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+                    <div
+                      className="h-full bg-cyan-400 transition-all duration-100"
+                      style={{
+                        width: `${Math.max(5, Math.round((hudTelemetry.phase === 'launch' ? hudTelemetry.launchProgress : 1) * 100))}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5 text-[10px] font-mono-tabular text-center pt-1">
+                    {[
+                      ['Liftoff', true],
+                      ['Stage 1 Sep', hudTelemetry.stage1Separated],
+                      ['Fairing Split', hudTelemetry.fairingSeparated],
+                      ['Orbit Release', hudTelemetry.payloadSeparated],
+                    ].map(([lbl, done]) => (
+                      <div
+                        key={String(lbl)}
+                        className={`py-1 px-1.5 rounded border ${
+                          done
+                            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                            : 'bg-slate-900 border-slate-800 text-slate-500'
+                        }`}
+                      >
+                        {lbl}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {starterStage === 'anomaly' && (
+                <div className="flex flex-col gap-2.5">
+                  <div className="bg-amber-950/40 border border-amber-500/50 rounded-lg p-3 text-xs text-amber-100">
+                    <div className="font-semibold text-amber-300 mb-1">
+                      Orbital Eclipse Ahead · Battery Reserve at 42%
+                    </div>
+                    <p className="text-slate-300">
+                      Your satellite separated cleanly into orbit! Choose how Flight Ops handles the first pass:
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      data-starter-choice="power"
+                      onClick={() => resolveStarterAnomaly('power')}
+                      className="p-2.5 rounded-lg bg-cyan-500/15 border border-cyan-400 hover:bg-cyan-500/25 text-left cursor-pointer transition-colors"
+                    >
+                      <div className="text-xs font-bold text-slate-50">Sun-Angle Solar Wings</div>
+                      <div className="font-mono-tabular text-[11px] text-emerald-300">+18% Power Margin</div>
+                    </button>
+                    <button
+                      type="button"
+                      data-starter-choice="science"
+                      onClick={() => resolveStarterAnomaly('science')}
+                      className="p-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-left cursor-pointer transition-colors"
+                    >
+                      <div className="text-xs font-bold text-slate-50">Boost S-Band Telemetry</div>
+                      <div className="font-mono-tabular text-[11px] text-cyan-300">+22% Science Downlink</div>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {starterStage === 'complete' && (
+                <div className="flex flex-col gap-3">
+                  <div className="bg-emerald-950/45 border border-emerald-500/50 rounded-lg p-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4" />
+                        ORBIT COMMISSIONED · GRADE S ({starterScore}/100)
+                      </div>
+                      <div className="text-[11px] text-slate-300 mt-0.5">{starterSummary}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      type="button"
+                      data-start="true"
+                      onClick={onStartMissionSetup}
+                      className="flex-1 min-w-[210px] px-5 py-3 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold text-sm uppercase tracking-wide flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                    >
+                      <Rocket className="w-4 h-4" />
+                      Start Playing Full Game
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={startStarterMission}
+                      className="px-3.5 py-3 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-200 text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Replay
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                data-start="true"
                 onClick={onStartMissionSetup}
-                className="px-6 py-3 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold text-sm uppercase tracking-wide flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap shrink-0"
+                className="px-4 py-2 rounded-lg bg-[#0B111E]/90 border border-slate-700 hover:border-cyan-400 text-slate-100 font-medium text-xs cursor-pointer transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5"
               >
-                <Rocket className="w-4 h-4" />
-                Configure Mission
-                <ArrowRight className="w-4 h-4" />
+                Full Mission Setup
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
 
               <button
                 type="button"
                 onClick={onQuickWorkbench}
-                className="px-5 py-3 rounded-lg bg-[#0B111E]/90 border border-slate-700 hover:border-cyan-400 text-slate-100 font-medium text-sm cursor-pointer transition-colors whitespace-nowrap shrink-0"
+                className="px-4 py-2 rounded-lg bg-[#0B111E]/90 border border-slate-700 hover:border-cyan-400 text-slate-100 font-medium text-xs cursor-pointer transition-colors whitespace-nowrap shrink-0"
               >
                 Open 3D Workbench
               </button>
             </div>
-
-            {/* Clean Unboxed Key Facts Strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-5 mt-2 border-t border-slate-800/90 max-w-xl">
-              <div>
-                <div className="font-mono-tabular text-2xl font-bold text-slate-50">5</div>
-                <div className="text-xs text-slate-400">NASA Missions</div>
-              </div>
-              <div>
-                <div className="font-mono-tabular text-2xl font-bold text-cyan-300">4</div>
-                <div className="text-xs text-slate-400">CML Design Gates</div>
-              </div>
-              <div>
-                <div className="font-mono-tabular text-2xl font-bold text-amber-300">3</div>
-                <div className="text-xs text-slate-400">Control Modes</div>
-              </div>
-              <div>
-                <div className="font-mono-tabular text-2xl font-bold text-emerald-300">1–4</div>
-                <div className="text-xs text-slate-400">Solo or Crew</div>
-              </div>
-            </div>
           </div>
 
-          {/* Right column intentionally open so live 3D planet & orbiting spacecraft remain clear */}
-          <div className="hidden lg:block lg:col-span-5" aria-hidden="true" />
+          {/* Right column intentionally open so live 3D Rocket Liftoff, Karman Gate & Satellite Release remain unobstructed */}
+          <div className="hidden lg:block lg:col-span-6" aria-hidden="true" />
         </div>
       </section>
 

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Solar-X — Respostas de Submissão NASA Space Apps Challenge</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 16mm 16mm 16mm 16mm;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #0F172A;
+      line-height: 1.52;
+      font-size: 10.5pt;
+      margin: 0;
+      padding: 0;
+      background: #FFFFFF;
+    }
+    .header {
+      border-bottom: 3px solid #0284C7;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .brand {
+      font-size: 20pt;
+      font-weight: 800;
+      color: #0B111E;
+      letter-spacing: -0.02em;
+    }
+    .brand span {
+      color: #0284C7;
+    }
+    .meta {
+      text-align: right;
+      font-size: 8.5pt;
+      color: #475569;
+    }
+    .section {
+      margin-bottom: 14px;
+      page-break-inside: avoid;
+    }
+    .q-title {
+      font-size: 11pt;
+      font-weight: 700;
+      color: #0369A1;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin: 0 0 5px 0;
+      border-bottom: 1px solid #E2E8F0;
+      padding-bottom: 3px;
+    }
+    p {
+      margin: 0 0 6px 0;
+      color: #1E293B;
+    }
+    ul {
+      margin: 4px 0 6px 18px;
+      padding: 0;
+    }
+    li {
+      margin-bottom: 3px;
+      color: #1E293B;
+    }
+    .link-box {
+      background: #F8FAFC;
+      border: 1px solid #CBD5E1;
+      border-radius: 6px;
+      padding: 9px 12px;
+      margin-top: 4px;
+    }
+    .link-row {
+      margin-bottom: 6px;
+      font-size: 10pt;
+    }
+    .link-row:last-child {
+      margin-bottom: 0;
+    }
+    .video-slot {
+      border: 1.5px dashed #0284C7;
+      background: #F0F9FF;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-top: 6px;
+      color: #0C4A6E;
+      font-weight: 600;
+    }
+    .video-line {
+      display: inline-block;
+      min-width: 260px;
+      border-bottom: 1.5px solid #0369A1;
+      height: 14px;
+      vertical-align: bottom;
+      margin-left: 6px;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #F1F5F9;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 9.5pt;
+    }
+    .footer {
+      margin-top: 18px;
+      padding-top: 8px;
+      border-top: 1px solid #E2E8F0;
+      font-size: 8.5pt;
+      color: #64748B;
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="brand">Solar-<span>X</span> · Space Mission Architect</div>
+      <div style="font-size: 9.5pt; color: #475569; margin-top: 2px;">
+        Documento Oficial de Submissão — NASA International Space Apps Challenge
+      </div>
+    </div>
+    <div class="meta">
+      Equipe: <strong>Solar-X</strong><br />
+      Plataforma Web 2D/3D Interativa
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 class="q-title">1. Nome do Projeto</h2>
+    <p><strong>Solar-X — Space Mission Architect</strong></p>
+  </div>
+
+  <div class="section">
+    <h2 class="q-title">2. Resumo de alto nível do projeto</h2>
+    <p>
+      O <strong>Solar-X</strong> é um simulador e jogo educativo interativo em 2D e 3D de arquitetura de missões espaciais que transforma a metodologia real da NASA — os Níveis de Maturidade de Conceito do JPL (<strong>CML 1 a 4</strong>) e o guia <strong>NASA CubeSat 101</strong> — em uma experiência prática e acessível diretamente no navegador. Nele, estudantes, educadores e equipes de até 4 participantes projetam um satélite completo, escolhem o veículo lançador, validam orçamentos acoplados de massa, energia, link de rádio e custo em tempo real e acompanham em 3D toda a trajetória desde a plataforma de lançamento, saída da atmosfera (Linha de Kármán a 100 km), separação de estágios e coifa, até a liberação do satélite em órbita e a resolução de anomalias em voo usando teclado, mouse ou controles de PS4 e PS5.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2 class="q-title">3. Link para a demonstração do projeto</h2>
+    <div class="link-box">
+      <div class="link-row">
+        <strong>Demonstração Web ao vivo:</strong> <code>https://solarx.mnanimat.xyz</code>
+      </div>
+      <div class="video-slot">
+        Link do vídeo de demonstração: <span class="video-line"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 class="q-title">4. Link para o projeto final</h2>
+    <div class="link-box">
+      <div class="link-row">
+        <strong>Aplicação em Produção (Cloudflare Workers):</strong> <code>https://solarx.mnanimat.xyz</code>
+      </div>
+      <div class="link-row">
+        <strong>Código-fonte / Projeto Final:</strong> Aplicação React + TypeScript + Three.js compilada estaticamente e servida via Cloudflare Workers (<code>wrangler.jsonc</code>).
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 class="q-title">5. Descrição detalhada do projeto</h2>
+    <p>
+      Projetar uma missão espacial real envolve trade-offs fortemente acoplados: aumentar a resolução de um instrumento científico eleva massa, consumo elétrico e taxa de dados, exigindo painéis solares maiores, baterias certificadas, antenas de maior ganho, estações terrestres mais potentes e um foguete com maior capacidade de carga. O <strong>Solar-X</strong> modela esse ciclo de engenharia de sistemas em quatro etapas integradas:
+    </p>
+    <ul>
+      <li><strong>Página Inicial Interativa e Missão Guiada:</strong> Ao abrir a plataforma, o usuário visualiza imediatamente a animação 3D do foguete decolando da superfície planetária, cruzando a atmosfera até o espaço e liberando o satélite, podendo jogar uma missão inicial interativa com tomada de decisão em órbita antes de avançar para o jogo completo.</li>
+      <li><strong>Seleção de Missão e Matriz STM (CML 1):</strong> Cinco perfis inspirados em missões reais da NASA (BioNutrients LEO, Solar Flare Scout SSO, Lunar Trailblazer NRHO, Mars Aeronomy ESCAPADE e Europa Clipper Deep Space), operando em modo Solo ou Equipe de 4 papéis (Principal Investigator, Systems Engineer, Flight/Launch Lead e Mission Ops).</li>
+      <li><strong>Montagem Modular e Inspeção CAD 3D (CML 2–3):</strong> Escolha de barramento (3U, 6U, 12U, ESPA, Discovery e Flagship), matrizes solares com atenuação física por distância solar (1/r<sup>2</sup>, de 1,0 AU na Terra a 5,2 AU em Europa), baterias com verificação UL-1642, ADCS/Star Trackers, materiais térmicos e cargas científicas, com visualização 3D explodida e botão de <strong>Auto-Setup</strong> que calcula automaticamente a configuração ótima válida.</li>
+      <li><strong>Telemetria Acoplada, Balanço de Link Friis e Portas de Segurança (CML 4):</strong> Painel em tempo real com radar de trade-space 2D, rastreamento de solo (Ground Track 2D), orçamento financeiro, massa vs. limite do foguete, margem de energia em eclipse e balanço de enlace RF (equação de Friis em dB). Qualquer violação aciona um alerta estrutural impeditivo antes da ignição.</li>
+      <li><strong>Simulação de Voo 3D e Controles Multi-dispositivo:</strong> Lançamento completo da rampa à órbita, acionamento de propulsores, manobra orbital arrastando o nó dourado em 3D e suporte nativo a teclado, mouse e controles <strong>PS4 DualShock 4 / PS5 DualSense</strong> (com vibração háptica nos propulsores e gatilhos L2/R2), encerrando com relatório formal de prontidão TMCO.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2 class="q-title">6. Uso da Superinteligência (SI)</h2>
+    <p>
+      Na arquitetura do aplicativo em execução, o <strong>Solar-X</strong> não utiliza chamadas externas de modelos de linguagem em tempo de execução: toda a física orbital, atenuação solar (1/r<sup>2</sup>), equação de Friis para link de rádio, cálculo de ciclos de eclipse, validação de regras CubeSat 101 e o algoritmo de busca do recurso <strong>Auto-Setup</strong> executam de forma 100% determinística no navegador do usuário, garantindo previsibilidade educacional, latência zero e fidelidade matemática. Durante o ciclo de desenvolvimento, ferramentas inteligentes de assistência de engenharia foram empregadas para acelerar a modelagem paramétrica das missões NASA, a construção procedural dos foguetes e satélites em Three.js, a calibração de usabilidade e a bateria automatizada de testes unitários e de renderização.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2 class="q-title">7. Dados da NASA</h2>
+    <p>Os cenários, restrições de engenharia e parâmetros físicos da simulação foram fundamentados em documentação e missões públicas da NASA:</p>
+    <ul>
+      <li><strong>Missões de Referência:</strong> NASA Ames <em>BioNutrients / PharmaSat</em> (LEO biológica), <em>MinXSS / Dellingr / PUNCH</em> (heliofísica em órbita heliossíncrona), <em>Lunar Trailblazer (SIMPLEx)</em> (mapeamento de gelo lunar em NRHO), <em>MAVEN / ESCAPADE</em> (aeronomia marciana a 1,52 AU) e <em>Europa Clipper</em> (sondagem de oceano subsuperficial a 5,2 AU com cofre de radiação).</li>
+      <li><strong>Metodologias e Manuais Técnicos:</strong> <em>NASA JPL Concept Maturity Levels (CML 1–4)</em> para rastreabilidade científica e margens de projeto (até 35% de reserva); <em>NASA CubeSat 101</em> (requisitos de bateria UL-1642, protusão máxima de 6,5 mm em ejetores P-POD, testes DITL, vibração e TVAC); <em>NASA-STD-8719.14 (ODAR)</em> para descarte orbital em até 25 anos.</li>
+      <li><strong>Redes de Comunicação Espacial:</strong> Estações da <em>NASA Near Space Network (NSN)</em> (White Sands, Wallops, McMurdo, Santiago) e da <em>NASA Deep Space Network (DSN 70m)</em> (Goldstone, Madrid e Canberra).</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2 class="q-title">8. Dados de parceiros da agência espacial e outras referências</h2>
+    <ul>
+      <li><strong>Veículos Lançadores e Provedores Comerciais/Parceiros:</strong> Especificações de massa útil para LEO, SSO e espaço profundo de <em>Rocket Lab (Electron)</em>, <em>SpaceX (Falcon 9 Transporter Rideshare e Falcon 9 Dedicated)</em>, <em>Northrop Grumman (Minotaur IV)</em>, <em>ULA (Vulcan Centaur VC4)</em> e <em>NASA (SLS Block 1 Heavy)</em>.</li>
+      <li><strong>Normas e Redes Regulatórias / Terrestres:</strong> Licenciamento de espectro RF pela <em>FCC</em>, licenciamento de sensoriamento remoto óptico da Terra pela <em>NOAA</em>, norma de baixa desgaseificação <em>ASTM E595</em>, certificação de células <em>UL-1642</em>, além de referências de redes universitárias UHF (Boulder/Morehead) e malhas comerciais GSaaS (Svalbard, Punta Arenas, Singapura, Alasca).</li>
+    </ul>
+  </div>
+
+  <div class="footer">
+    <span>Solar-X — Space Mission Architect</span>
+    <span>https://solarx.mnanimat.xyz</span>
+  </div>
+</body>
+</html>
