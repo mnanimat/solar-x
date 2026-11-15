@@ -68,12 +68,14 @@ function createSolarCellTexture(): THREE.CanvasTexture {
 }
 
 function createPlanetTexture(body: CelestialBodyId): THREE.CanvasTexture {
+  const texW = 768;
+  const texH = 384;
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 256;
+  canvas.width = texW;
+  canvas.height = texH;
   const ctx = canvas.getContext('2d');
   if (ctx) {
-    const img = ctx.createImageData(512, 256);
+    const img = ctx.createImageData(texW, texH);
     const data = img.data;
     // Deterministic multi-octave trigonometric value noise for realistic coastlines & terrain
     const fbm = (lon: number, lat: number, seed: number) => {
@@ -86,12 +88,12 @@ function createPlanetTexture(body: CelestialBodyId): THREE.CanvasTexture {
       return (n1 + n2 + n3) / 2.25;
     };
 
-    for (let py = 0; py < 256; py++) {
-      const lat = (0.5 - py / 256) * Math.PI;
+    for (let py = 0; py < texH; py++) {
+      const lat = (0.5 - py / texH) * Math.PI;
       const absLat = Math.abs(lat) / (Math.PI / 2);
-      for (let px = 0; px < 512; px++) {
-        const lon = (px / 512) * Math.PI * 2 - Math.PI;
-        const idx = (py * 512 + px) * 4;
+      for (let px = 0; px < texW; px++) {
+        const lon = (px / texW) * Math.PI * 2 - Math.PI;
+        const idx = (py * texW + px) * 4;
         const h = fbm(lon, lat, body === 'earth' ? 1.4 : body === 'mars' ? 3.8 : 6.1);
 
         let r = 10;
@@ -903,11 +905,11 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
     const planetMesh = new THREE.Mesh(planetGeo, planetMat);
     worldGroup.add(planetMesh);
 
-    const atmoGeo = new THREE.SphereGeometry(planetRadius * 1.035, 32, 24);
+    const atmoGeo = new THREE.SphereGeometry(planetRadius * 1.05, 36, 28);
     const atmoMat = new THREE.MeshBasicMaterial({
       color: '#38BDF8',
       transparent: true,
-      opacity: 0.14,
+      opacity: 0.21,
       side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
     });
@@ -927,22 +929,44 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
     let lastCurveOrbitRadius = -1;
     let orbitRadius = 7.4;
 
-    // Launch Pad & Umbilical Clamp Towers (placed on planet surface at P0 of ascent trajectory)
+    // Launch Pad & Base-Pivoted Clamp Towers (placed on planet surface at P0 of ascent trajectory)
     const launchPadGroup = new THREE.Group();
     const padDeck = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.55, 0.72, 0.18, 16),
+      new THREE.CylinderGeometry(0.84, 1.06, 0.16, 20),
       new THREE.MeshStandardMaterial({ color: '#475569', metalness: 0.75, roughness: 0.35 })
     );
+    padDeck.position.y = -0.02;
+    const blastRing = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.46, 0.52, 0.03, 20),
+      new THREE.MeshStandardMaterial({ color: '#1E293B', metalness: 0.85, roughness: 0.3 })
+    );
+    blastRing.position.y = 0.065;
+
     const padTowerMat = new THREE.MeshStandardMaterial({ color: '#94A3B8', metalness: 0.7, roughness: 0.35 });
-    const towerLeft = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.95, 0.11), padTowerMat);
-    towerLeft.position.set(-0.38, 0.48, 0);
-    const towerRight = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.95, 0.11), padTowerMat);
-    towerRight.position.set(0.38, 0.48, 0);
+    const towerGeo = new THREE.BoxGeometry(0.11, 1.32, 0.11);
+    const armGeo = new THREE.BoxGeometry(0.24, 0.05, 0.06);
+
+    const towerLeftPivot = new THREE.Group();
+    towerLeftPivot.position.set(-0.74, 0.06, 0);
+    const towerLeft = new THREE.Mesh(towerGeo, padTowerMat);
+    towerLeft.position.set(0, 0.66, 0);
+    const armLeft = new THREE.Mesh(armGeo, padTowerMat);
+    armLeft.position.set(0.14, 1.08, 0);
     const padBeacon = new THREE.Mesh(
       new THREE.SphereGeometry(0.08, 10, 8),
       new THREE.MeshBasicMaterial({ color: '#F59E0B' })
     );
-    padBeacon.position.set(0, 0.98, 0.25);
+    padBeacon.position.set(0, 1.36, 0);
+    towerLeftPivot.add(towerLeft, armLeft, padBeacon);
+
+    const towerRightPivot = new THREE.Group();
+    towerRightPivot.position.set(0.74, 0.06, 0);
+    const towerRight = new THREE.Mesh(towerGeo, padTowerMat);
+    towerRight.position.set(0, 0.66, 0);
+    const armRight = new THREE.Mesh(armGeo, padTowerMat);
+    armRight.position.set(-0.14, 1.08, 0);
+    towerRightPivot.add(towerRight, armRight);
+
     const padSmokeMat = new THREE.MeshBasicMaterial({
       color: '#CBD5E1',
       transparent: true,
@@ -950,11 +974,11 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       side: THREE.DoubleSide,
       depthWrite: false,
     });
-    const padSmoke = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.26, 10, 22), padSmokeMat);
+    const padSmoke = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.26, 10, 22), padSmokeMat);
     padSmoke.rotation.x = Math.PI / 2;
     padSmoke.position.y = 0.08;
     padSmoke.visible = false;
-    launchPadGroup.add(padDeck, towerLeft, towerRight, padBeacon, padSmoke);
+    launchPadGroup.add(padDeck, blastRing, towerLeftPivot, towerRightPivot, padSmoke);
     orbitGroup.add(launchPadGroup);
 
     // Karman Line (Space Exit Gate) marker ring encircling the ascent path
@@ -1256,13 +1280,13 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       const p = Math.max(0.001, Math.min(1, pRaw));
       updateFlownAscentTrail(p);
 
-      const clampRetract = Math.min(1, p / 0.08);
-      towerLeft.rotation.z = clampRetract * 0.42;
-      towerRight.rotation.z = -clampRetract * 0.42;
+      const clampRetract = Math.min(1, p / 0.06);
+      towerLeftPivot.rotation.z = clampRetract * 0.38;
+      towerRightPivot.rotation.z = -clampRetract * 0.38;
       if (p < 0.2) {
         padSmoke.visible = true;
         const smokeT = p / 0.2;
-        padSmoke.scale.setScalar(1 + smokeT * 2.8);
+        padSmoke.scale.setScalar(1 + smokeT * 2.5);
         padSmokeMat.opacity = Math.max(0, 0.55 * (1 - smokeT));
       } else {
         padSmoke.visible = false;
@@ -1276,13 +1300,21 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       rocketAnchor.visible = true;
       rocketAnchor.scale.setScalar(rocketScale);
       rocketAnchor.quaternion.setFromUnitVectors(upY, scratchCurveTanWorld);
-      rocketAnchor.rotateY(p * 0.7);
+      // Delay roll program until rocket has cleanly cleared the umbilical towers
+      rocketAnchor.rotateY(Math.max(0, p - 0.1) * 0.78);
+
+      // Offset rocket forward along climb tangent so engine nozzles (local y = -3.84) start flush atop padDeck
+      // without ever clipping through the launchpad, tapering linearly so payload reaches P5 cleanly at SECO
+      const releaseBlend = Math.min(1, p / 0.9);
+      const axialOffset = THREE.MathUtils.lerp(3.98 * rocketScale, -1.92 * rocketScale, releaseBlend);
 
       if (p < 0.9) {
-        rocketAnchor.position.copy(scratchCurvePosWorld);
+        rocketAnchor.position.copy(scratchCurvePosWorld).addScaledVector(scratchCurveTanWorld, axialOffset);
       } else {
         const sepSat = (p - 0.9) / 0.1;
-        rocketAnchor.position.copy(scratchCurvePosWorld).addScaledVector(scratchCurveTanWorld, -(0.9 + sepSat * 2.4));
+        rocketAnchor.position
+          .copy(scratchCurvePosWorld)
+          .addScaledVector(scratchCurveTanWorld, -1.92 * rocketScale - sepSat * 2.4);
       }
 
       if (p < 0.56) {
@@ -1290,7 +1322,12 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
         rocketStack.firstStage.position.set(0, 0, 0);
         rocketStack.firstStage.rotation.set(0, 0, 0);
         rocketStack.stage1Flame.visible = true;
-        rocketStack.stage1Flame.scale.set(1, 0.85 + Math.sin(nowMs * 0.05) * 0.22, 1);
+        const padFlameScale = Math.min(1, 0.22 + (p / 0.12) * 0.78);
+        rocketStack.stage1Flame.scale.set(
+          1,
+          padFlameScale * (0.85 + Math.sin(nowMs * 0.05) * 0.22),
+          1
+        );
         rocketStack.stage2Flame.visible = false;
       } else {
         const sep1 = Math.min(1, (p - 0.56) / 0.24);
@@ -1323,15 +1360,15 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
 
         builtCraft.root.visible = true;
         if (p < 0.9) {
-          craftAnchor.position.copy(scratchCurvePosWorld).addScaledVector(scratchCurveTanWorld, 0.78);
+          craftAnchor.position
+            .copy(rocketAnchor.position)
+            .addScaledVector(scratchCurveTanWorld, 1.92 * rocketScale);
           craftAnchor.quaternion.copy(rocketAnchor.quaternion);
           craftAnchor.scale.setScalar(craftLaunchScale);
         } else {
           const sepSat = (p - 0.9) / 0.1;
-          // Smooth position handoff toward P5 orbit insertion + smooth quaternion slerp to nadir orientation
-          craftAnchor.position
-            .copy(scratchCurvePosWorld)
-            .addScaledVector(scratchCurveTanWorld, 0.78 * (1 - sepSat));
+          // At p = 0.90 craftAnchor is already at scratchCurvePosWorld; ride smoothly to P5 & slerp nadir
+          craftAnchor.position.copy(scratchCurvePosWorld);
           craftAnchor.scale.setScalar(THREE.MathUtils.lerp(craftLaunchScale, craftOrbitScale, sepSat));
           scratchNadirMat.lookAt(craftAnchor.position, worldCenter, upY);
           scratchNadirQuat.setFromRotationMatrix(scratchNadirMat);
@@ -1348,8 +1385,8 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       worldCenter: THREE.Vector3
     ) => {
       padSmoke.visible = false;
-      towerLeft.rotation.z = 0.42;
-      towerRight.rotation.z = -0.42;
+      towerLeftPivot.rotation.z = 0.38;
+      towerRightPivot.rotation.z = -0.38;
       const isDeploying = phase === 'deployment';
       if (isDeploying && deployProgress < 0.45 && ascentCurve) {
         const dT = deployProgress / 0.45;
@@ -1363,7 +1400,7 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
         rocketStack.fairingLeft.visible = false;
         rocketStack.fairingRight.visible = false;
         rocketStack.stage2Flame.visible = false;
-        rocketAnchor.position.copy(scratchCurvePosWorld).addScaledVector(scratchCurveTanWorld, -(3.3 + dT * 4.2));
+        rocketAnchor.position.copy(scratchCurvePosWorld).addScaledVector(scratchCurveTanWorld, -(3.78 + dT * 4.2));
         rocketAnchor.quaternion.setFromUnitVectors(upY, scratchCurveTanWorld);
       } else {
         rocketAnchor.visible = false;
@@ -1507,13 +1544,13 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
 
         if (curIntro && ascentCurve) {
           if (curIntro.phase === 'launch') {
-            renderRocketLaunchFrame(curIntro.launchProgress, now, 0.72, 0.58, 0.92, worldGroup.position);
+            renderRocketLaunchFrame(curIntro.launchProgress, now, 0.66, 0.54, 0.86, worldGroup.position);
           } else {
             renderDeployedOrbitFrame(
               curIntro.phase,
               curIntro.deployProgress,
               curIntro.orbitAngleRad,
-              0.92,
+              0.86,
               worldGroup.position
             );
           }
@@ -1528,34 +1565,44 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
           // Target focus point: rocket during ascent -> deployed satellite upon release & orbit
           const focusObjPos =
             curIntro.phase === 'launch' && curIntro.launchProgress < 0.88
-              ? scratchCurvePosWorld
+              ? rocketAnchor.position
               : craftAnchor.position;
 
           scratchOutward.copy(focusObjPos).sub(worldGroup.position).normalize();
-          scratchSideAxis.set(0, 1, 0).applyEuler(orbitGroup.rotation).normalize();
-          scratchTangent.crossVectors(scratchSideAxis, scratchOutward).normalize();
-
           const isLaunchPhase = curIntro.phase === 'launch';
-          const outDist = isLaunchPhase ? 3.8 : 2.9;
-          const sideDist = isLaunchPhase ? 2.35 : 1.8;
-          const backDist = isLaunchPhase ? 3.3 : 2.5;
+          const aspect = Math.max(0.4, camera.aspect || 1.6);
+          const isPortraitMobile = aspect < 1.0;
 
-          scratchChaseCam
-            .copy(focusObjPos)
-            .addScaledVector(scratchOutward, outDist)
-            .addScaledVector(scratchSideAxis, sideDist)
-            .addScaledVector(scratchTangent, -backDist);
+          // Frame the entire sunlit planet attractively while gently accompanying the rocket & satellite
+          scratchSideAxis.set(0.56, 0.34, 0.75).normalize();
+          scratchTangent
+            .copy(scratchSideAxis)
+            .lerp(scratchOutward, isPortraitMobile ? 0.48 : isLaunchPhase ? 0.36 : 0.4)
+            .normalize();
 
-          scratchChaseLook.copy(focusObjPos).lerp(worldGroup.position, isLaunchPhase ? 0.08 : 0.04);
+          const baseDesktopDist = isLaunchPhase ? 18.2 : 19.0;
+          const responsiveFitDist = aspect < 1.15 ? 7.1 / (0.404 * aspect) : baseDesktopDist;
+          const camDist = Math.max(baseDesktopDist, responsiveFitDist);
 
-          // Shift framing slightly left in camera-space so rocket & satellite sit heroically in clear view above the compact panel
+          scratchChaseCam.copy(worldGroup.position).addScaledVector(scratchTangent, camDist);
+          const followLookWeight = isPortraitMobile ? 0.34 : isLaunchPhase ? 0.22 : 0.2;
+          scratchChaseLook.copy(worldGroup.position).lerp(focusObjPos, followLookWeight);
+
+          // Desktop: nudge planet slightly right of the compact corner card; Mobile: elevate planet above bottom card
           scratchCamFwd.copy(scratchChaseLook).sub(scratchChaseCam).normalize();
           scratchCamRight.crossVectors(scratchCamFwd, upY);
           if (scratchCamRight.lengthSq() > 0.001) {
             scratchCamRight.normalize();
-            const screenShift = isLaunchPhase ? -0.45 : -0.55;
-            scratchChaseCam.addScaledVector(scratchCamRight, screenShift);
-            scratchChaseLook.addScaledVector(scratchCamRight, screenShift);
+            if (isPortraitMobile) {
+              scratchOutward.crossVectors(scratchCamRight, scratchCamFwd).normalize();
+              const mobileUpShift = -2.1;
+              scratchChaseCam.addScaledVector(scratchOutward, mobileUpShift);
+              scratchChaseLook.addScaledVector(scratchOutward, mobileUpShift);
+            } else {
+              const desktopRightShift = -1.15;
+              scratchChaseCam.addScaledVector(scratchCamRight, desktopRightShift);
+              scratchChaseLook.addScaledVector(scratchCamRight, desktopRightShift);
+            }
           }
 
           if (lastPresetKey !== 'starter' || replayedLaunch) {
@@ -1680,8 +1727,8 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
         rocketAnchor.visible = false;
         if (flownAscentLine) flownAscentLine.visible = false;
         padSmoke.visible = false;
-        towerLeft.rotation.z = 0;
-        towerRight.rotation.z = 0;
+        towerLeftPivot.rotation.z = 0;
+        towerRightPivot.rotation.z = 0;
         builtCraft.root.visible = true;
         beamMesh.visible = false;
 
@@ -1779,10 +1826,15 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       }
 
       // Dynamic minimum zoom distance so zooming never clips inside or fills screen with blurry globe surface
-      const isChaseCam =
-        (curMode === 'starter' && Boolean(curIntro)) ||
-        (curMode === 'simulation' && curSim?.phase !== 'launch' && curPreset === 'assembly');
-      controls.minDistance = !worldGroup.visible ? 2.2 : isChaseCam ? 2.4 : planetRadius + 6.2;
+      const isSimChaseCam =
+        curMode === 'simulation' && curSim?.phase !== 'launch' && curPreset === 'assembly';
+      controls.minDistance = !worldGroup.visible
+        ? 2.2
+        : isSimChaseCam
+          ? 2.4
+          : curMode === 'starter'
+            ? planetRadius + 4.2
+            : planetRadius + 6.2;
 
       // PS4/PS5 Right Stick & Keyboard camera orbit/zoom control
       if (fi && (Math.abs(fi.cameraYaw) > 0.02 || Math.abs(fi.cameraPitch) > 0.02 || Math.abs(fi.cameraZoom) > 0.02)) {
@@ -1802,7 +1854,7 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
 
       // Radial surface barrier clamp: keep camera safely outside the planet atmosphere at all times
       if (worldGroup.visible) {
-        const minSurfaceDist = isChaseCam ? planetRadius + 1.8 : planetRadius + 5.6;
+        const minSurfaceDist = isSimChaseCam ? planetRadius + 1.8 : planetRadius + 4.2;
         radialClampVec.copy(camera.position).sub(worldGroup.position);
         const distSq = radialClampVec.lengthSq();
         if (distSq < minSurfaceDist * minSurfaceDist) {
@@ -1848,8 +1900,10 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       beamMat.dispose();
       padDeck.geometry.dispose();
       (padDeck.material as THREE.Material).dispose();
-      towerLeft.geometry.dispose();
-      towerRight.geometry.dispose();
+      blastRing.geometry.dispose();
+      (blastRing.material as THREE.Material).dispose();
+      towerGeo.dispose();
+      armGeo.dispose();
       padTowerMat.dispose();
       padBeacon.geometry.dispose();
       (padBeacon.material as THREE.Material).dispose();

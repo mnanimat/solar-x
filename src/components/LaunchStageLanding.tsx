@@ -200,13 +200,13 @@ export const LaunchStageLanding: React.FC<LaunchStageLandingProps> = ({
   const quickDiffs = DIFFICULTIES.slice(0, 4);
 
   return (
-    <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 sm:p-6">
+    <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-3 sm:p-6">
       {/* Top Floating Brand + Direct Continue CTA */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="pointer-events-auto bg-[#0B111E]/95 border border-slate-700/80 rounded-xl px-3.5 py-2 shadow-xl flex items-center gap-2.5">
+      <div className="flex items-center justify-between gap-2 sm:gap-3">
+        <div className="pointer-events-auto bg-[#0B111E]/95 border border-slate-700/80 rounded-xl px-3 py-1.5 sm:px-3.5 sm:py-2 shadow-xl flex items-center gap-2">
           <Rocket className="w-4 h-4 text-cyan-400 shrink-0" />
-          <div className="font-display font-bold text-sm text-slate-50 tracking-tight">
-            Solar-X <span className="text-slate-400 font-normal">· Space Mission Architect</span>
+          <div className="font-display font-bold text-xs sm:text-sm text-slate-50 tracking-tight whitespace-nowrap">
+            Solar-X <span className="hidden sm:inline text-slate-400 font-normal">· Space Mission Architect</span>
           </div>
         </div>
 
@@ -217,9 +217,9 @@ export const LaunchStageLanding: React.FC<LaunchStageLandingProps> = ({
             missionAudio.playSelect();
             onContinueToHome();
           }}
-          className="pointer-events-auto px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold text-xs sm:text-sm uppercase tracking-wide flex items-center gap-1.5 shadow-xl cursor-pointer transition-colors"
+          className="pointer-events-auto px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold text-xs sm:text-sm uppercase tracking-wide flex items-center gap-1.5 shadow-xl cursor-pointer transition-colors whitespace-nowrap shrink-0"
         >
-          Continue to Home &amp; Game
+          <span className="hidden sm:inline">Continue to </span>Home &amp; Game
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
@@ -247,7 +247,7 @@ export const LaunchStageLanding: React.FC<LaunchStageLandingProps> = ({
           </div>
         ) : (
           <div
-            className={`pointer-events-auto w-full ${
+            className={`pointer-events-auto w-full mx-auto sm:mx-0 ${
               optionsExpanded ? 'max-w-[435px] p-4 gap-3' : 'max-w-[345px] p-3 gap-2'
             } bg-[#0B111E]/95 border border-slate-700/85 rounded-2xl shadow-2xl flex flex-col max-h-[82vh] overflow-y-auto transition-all`}
           >
