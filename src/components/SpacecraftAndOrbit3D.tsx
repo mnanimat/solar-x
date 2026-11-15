@@ -5,6 +5,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import type { CelestialBodyId } from '../engine/missionCatalog';
 import type { DesignEvaluation, SimulationState } from '../engine/missionPhysics';
 import type { FlightControlInput } from '../engine/flightControls';
+import { buildAscentControlPoints } from '../engine/launchTrajectory';
 
 export type ViewportCameraPreset = 'assembly' | 'orbit' | 'launch';
 
@@ -155,6 +156,50 @@ function createPlanetTexture(body: CelestialBodyId): THREE.CanvasTexture {
       }
     }
     ctx.putImageData(img, 0, 0);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function createRocketHullTexture(lvId: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const isOrangeTank = lvId === 'lv-sls';
+    ctx.fillStyle = isOrangeTank ? '#C2410C' : '#E2E8F0';
+    ctx.fillRect(0, 0, 256, 512);
+
+    // Subtle tank weld seams & milled aluminum ribbing
+    ctx.strokeStyle = isOrangeTank ? 'rgba(124, 45, 18, 0.45)' : 'rgba(148, 163, 184, 0.45)';
+    ctx.lineWidth = 2;
+    for (let y = 48; y < 512; y += 64) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(256, y);
+      ctx.stroke();
+    }
+
+    // Cryogenic LOX frost band & telemetry stripe
+    ctx.fillStyle = isOrangeTank ? '#9A3412' : '#0F172A';
+    ctx.fillRect(0, 12, 256, 42);
+    ctx.fillStyle = '#38BDF8';
+    ctx.fillRect(0, 54, 256, 8);
+
+    // Vertical black-and-white NASA roll pattern checkerboard near top of booster
+    const cell = 16;
+    for (let cx = 0; cx < 256; cx += cell) {
+      ctx.fillStyle = (cx / cell) % 2 === 0 ? '#0F172A' : '#F8FAFC';
+      ctx.fillRect(cx, 72, cell, 20);
+    }
+
+    // Vertical Solar-X telemetry stripe
+    ctx.fillStyle = isOrangeTank ? '#F8FAFC' : '#0284C7';
+    ctx.fillRect(114, 110, 28, 330);
+    ctx.fillStyle = '#0F172A';
+    ctx.fillRect(0, 462, 256, 50);
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -452,68 +497,237 @@ function buildProceduralSpacecraft(
   return { root, leftWingPivot, rightWingPivot, explodedParts, magBoomTip, thrusterPlume };
 }
 
-function buildRocketStack(lvId: string): {
+interface RocketStackRig {
   rocket: THREE.Group;
   firstStage: THREE.Group;
-  fairing: THREE.Group;
-  flame: THREE.Mesh;
-} {
+  upperStage: THREE.Group;
+  fairingLeft: THREE.Group;
+  fairingRight: THREE.Group;
+  stage1Flame: THREE.Group;
+  stage2Flame: THREE.Group;
+  hullTex: THREE.CanvasTexture;
+}
+
+function buildRocketStack(lvId: string): RocketStackRig {
   const rocket = new THREE.Group();
   const isHeavy = lvId === 'lv-sls' || lvId === 'lv-vulcan';
-  const bodyRadius = isHeavy ? 0.52 : 0.34;
+  const bodyRadius = isHeavy ? 0.5 : 0.34;
+  const hullTex = createRocketHullTexture(lvId);
 
-  const whiteMat = new THREE.MeshStandardMaterial({ color: '#E2E8F0', metalness: 0.25, roughness: 0.4 });
-  const orangeMat = new THREE.MeshStandardMaterial({ color: '#C2410C', metalness: 0.2, roughness: 0.55 });
-  const darkMat = new THREE.MeshStandardMaterial({ color: '#1E293B', metalness: 0.7, roughness: 0.35 });
+  const hullMat = new THREE.MeshStandardMaterial({
+    map: hullTex,
+    metalness: lvId === 'lv-sls' ? 0.16 : 0.3,
+    roughness: lvId === 'lv-sls' ? 0.62 : 0.36,
+  });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: '#F1F5F9', metalness: 0.25, roughness: 0.36 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: '#1E293B', metalness: 0.72, roughness: 0.32 });
+  const steelMat = new THREE.MeshStandardMaterial({ color: '#64748B', metalness: 0.88, roughness: 0.22 });
+  const nozzleMat = new THREE.MeshStandardMaterial({
+    color: '#475569',
+    metalness: 0.9,
+    roughness: 0.2,
+    side: THREE.DoubleSide,
+  });
 
+  // 1. First Stage Booster Assembly
   const firstStage = new THREE.Group();
-  const core = new THREE.Mesh(
-    new THREE.CylinderGeometry(bodyRadius, bodyRadius, 3.2, 20),
-    lvId === 'lv-sls' ? orangeMat : whiteMat
-  );
-  core.position.y = -1.6;
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(bodyRadius, bodyRadius, 3.25, 24), hullMat);
+  core.position.y = -1.65;
   firstStage.add(core);
 
+  // Propellant feed line & cable raceway along core
+  const raceway = new THREE.Mesh(new THREE.BoxGeometry(0.08, 3.05, 0.09), steelMat);
+  raceway.position.set(0, -1.65, bodyRadius + 0.02);
+  firstStage.add(raceway);
+
+  // Carbon interstage collar
+  const interstage = new THREE.Mesh(
+    new THREE.CylinderGeometry(bodyRadius * 1.01, bodyRadius * 1.01, 0.42, 24),
+    darkMat
+  );
+  interstage.position.y = -0.02;
+  firstStage.add(interstage);
+
+  // 4 aerodynamic grid fins & lower stabilizing strakes
+  for (let i = 0; i < 4; i++) {
+    const angle = (i * Math.PI) / 2 + Math.PI / 4;
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.04, 0.16), steelMat);
+    fin.position.set(Math.cos(angle) * (bodyRadius + 0.1), -0.34, Math.sin(angle) * (bodyRadius + 0.1));
+    fin.rotation.y = -angle;
+    const strake = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.55, 0.05), darkMat);
+    strake.position.set(Math.cos(angle) * (bodyRadius + 0.08), -2.95, Math.sin(angle) * (bodyRadius + 0.08));
+    strake.rotation.y = -angle;
+    firstStage.add(fin, strake);
+  }
+
+  // Octaweb thrust skirt + clustered engine nozzle bells
+  const engineSkirt = new THREE.Mesh(
+    new THREE.CylinderGeometry(bodyRadius * 0.94, bodyRadius * 1.08, 0.36, 20),
+    darkMat
+  );
+  engineSkirt.position.y = -3.38;
+  firstStage.add(engineSkirt);
+
+  const mainNozzleGeo = new THREE.CylinderGeometry(0.06, 0.14, 0.32, 14, 1, true);
+  const nozzleOffsets: Array<[number, number]> = isHeavy
+    ? [
+        [0, 0],
+        [0.18, 0.1],
+        [-0.18, 0.1],
+        [0, -0.18],
+      ]
+    : [
+        [0, 0],
+        [0.12, 0],
+        [-0.12, 0],
+      ];
+  for (const [nx, nz] of nozzleOffsets) {
+    const bell = new THREE.Mesh(mainNozzleGeo, nozzleMat);
+    bell.position.set(nx, -3.68, nz);
+    firstStage.add(bell);
+  }
+
+  // Twin Solid Rocket Boosters for SLS / Vulcan heavy configurations
   if (isHeavy) {
     for (const sx of [-1, 1]) {
-      const srb = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 2.7, 14), whiteMat);
-      srb.position.set(sx * (bodyRadius + 0.22), -1.75, 0);
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.45, 14), whiteMat);
-      cone.position.set(sx * (bodyRadius + 0.22), -0.18, 0);
-      firstStage.add(srb, cone);
+      const srbBody = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 2.75, 16), whiteMat);
+      srbBody.position.set(sx * (bodyRadius + 0.24), -1.78, 0);
+      const srbBand = new THREE.Mesh(new THREE.CylinderGeometry(0.185, 0.185, 0.16, 16), darkMat);
+      srbBand.position.set(sx * (bodyRadius + 0.24), -0.75, 0);
+      const srbCone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.48, 16), whiteMat);
+      srbCone.position.set(sx * (bodyRadius + 0.24), -0.17, 0);
+      const srbNozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.16, 0.28, 14, 1, true), nozzleMat);
+      srbNozzle.position.set(sx * (bodyRadius + 0.24), -3.28, 0);
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 0.08), steelMat);
+      strut.position.set(sx * (bodyRadius + 0.12), -0.95, 0);
+      firstStage.add(srbBody, srbBand, srbCone, srbNozzle, strut);
     }
   }
-  const engineSkirt = new THREE.Mesh(new THREE.CylinderGeometry(bodyRadius * 0.9, bodyRadius * 1.05, 0.45, 16), darkMat);
-  engineSkirt.position.y = -3.35;
-  firstStage.add(engineSkirt);
-  rocket.add(firstStage);
 
-  const upperStage = new THREE.Mesh(new THREE.CylinderGeometry(bodyRadius * 0.95, bodyRadius * 0.95, 1.15, 20), darkMat);
-  upperStage.position.y = 0.55;
-  rocket.add(upperStage);
-
-  const fairing = new THREE.Group();
-  fairing.position.y = 1.65;
-  const fairingCyl = new THREE.Mesh(new THREE.CylinderGeometry(bodyRadius * 1.04, bodyRadius * 1.04, 1.0, 20), whiteMat);
-  const fairingNose = new THREE.Mesh(new THREE.ConeGeometry(bodyRadius * 1.04, 1.15, 20), whiteMat);
-  fairingNose.position.y = 1.07;
-  fairing.add(fairingCyl, fairingNose);
-  rocket.add(fairing);
-
-  const flame = new THREE.Mesh(
-    new THREE.ConeGeometry(bodyRadius * 0.85, 2.6, 16),
+  // Stage 1 Dual-Layer Exhaust Plume
+  const stage1Flame = new THREE.Group();
+  stage1Flame.position.set(0, -3.82, 0);
+  const outerPlume1 = new THREE.Mesh(
+    new THREE.ConeGeometry(bodyRadius * 0.92, 2.9, 16),
     new THREE.MeshBasicMaterial({
-      color: '#F59E0B',
+      color: '#F97316',
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.78,
       blending: THREE.AdditiveBlending,
+      depthWrite: false,
     })
   );
-  flame.rotation.x = Math.PI;
-  flame.position.y = -4.8;
-  rocket.add(flame);
+  outerPlume1.rotation.x = Math.PI;
+  outerPlume1.position.y = -1.45;
+  const innerCore1 = new THREE.Mesh(
+    new THREE.ConeGeometry(bodyRadius * 0.42, 1.75, 14),
+    new THREE.MeshBasicMaterial({
+      color: '#FEF08A',
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+  );
+  innerCore1.rotation.x = Math.PI;
+  innerCore1.position.y = -0.88;
+  stage1Flame.add(outerPlume1, innerCore1);
+  firstStage.add(stage1Flame);
+  rocket.add(firstStage);
 
-  return { rocket, firstStage, fairing, flame };
+  // 2. Cryogenic Upper Stage + Payload Attach Fitting (PAF)
+  const upperStage = new THREE.Group();
+  const stage2Tank = new THREE.Mesh(
+    new THREE.CylinderGeometry(bodyRadius * 0.95, bodyRadius * 0.95, 1.05, 22),
+    darkMat
+  );
+  stage2Tank.position.y = 0.56;
+  const avionicsBand = new THREE.Mesh(
+    new THREE.CylinderGeometry(bodyRadius * 0.97, bodyRadius * 0.97, 0.16, 22),
+    whiteMat
+  );
+  avionicsBand.position.y = 1.08;
+  const pafCone = new THREE.Mesh(
+    new THREE.CylinderGeometry(bodyRadius * 0.55, bodyRadius * 0.92, 0.24, 20),
+    steelMat
+  );
+  pafCone.position.y = 1.24;
+  const vacuumBell = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.09, bodyRadius * 0.48, 0.46, 18, 1, true),
+    nozzleMat
+  );
+  vacuumBell.position.y = -0.14;
+
+  const stage2Flame = new THREE.Group();
+  stage2Flame.position.set(0, -0.36, 0);
+  stage2Flame.visible = false;
+  const outerPlume2 = new THREE.Mesh(
+    new THREE.ConeGeometry(bodyRadius * 0.68, 2.2, 16),
+    new THREE.MeshBasicMaterial({
+      color: '#38BDF8',
+      transparent: true,
+      opacity: 0.72,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+  );
+  outerPlume2.rotation.x = Math.PI;
+  outerPlume2.position.y = -1.1;
+  const innerCore2 = new THREE.Mesh(
+    new THREE.ConeGeometry(bodyRadius * 0.3, 1.2, 14),
+    new THREE.MeshBasicMaterial({
+      color: '#E0F2FE',
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+  );
+  innerCore2.rotation.x = Math.PI;
+  innerCore2.position.y = -0.6;
+  stage2Flame.add(outerPlume2, innerCore2);
+
+  upperStage.add(stage2Tank, avionicsBand, pafCone, vacuumBell, stage2Flame);
+  rocket.add(upperStage);
+
+  // 3. Split Payload Fairing Halves (peel open cleanly in space at Karman line)
+  const buildFairingHalf = (startPhi: number) => {
+    const half = new THREE.Group();
+    half.position.y = 1.15;
+    const cylHalf = new THREE.Mesh(
+      new THREE.CylinderGeometry(bodyRadius * 1.06, bodyRadius * 1.06, 1.05, 18, 1, false, startPhi, Math.PI),
+      whiteMat
+    );
+    cylHalf.position.y = 0.52;
+    const noseHalf = new THREE.Mesh(
+      new THREE.ConeGeometry(bodyRadius * 1.06, 1.18, 18, 1, false, startPhi, Math.PI),
+      whiteMat
+    );
+    noseHalf.position.y = 1.63;
+    const seamStripe = new THREE.Mesh(
+      new THREE.CylinderGeometry(bodyRadius * 1.08, bodyRadius * 1.08, 0.1, 18, 1, false, startPhi, Math.PI),
+      darkMat
+    );
+    seamStripe.position.y = 0.08;
+    half.add(cylHalf, noseHalf, seamStripe);
+    return half;
+  };
+
+  // thetaStart = Math.PI -> -X half; thetaStart = 0 -> +X half
+  const fairingLeft = buildFairingHalf(Math.PI);
+  const fairingRight = buildFairingHalf(0);
+  rocket.add(fairingLeft, fairingRight);
+
+  return {
+    rocket,
+    firstStage,
+    upperStage,
+    fairingLeft,
+    fairingRight,
+    stage1Flame,
+    stage2Flame,
+    hullTex,
+  };
 }
 
 export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
@@ -689,11 +903,53 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
     const atmoMesh = new THREE.Mesh(atmoGeo, atmoMat);
     worldGroup.add(atmoMesh);
 
-    // Orbit Ring
+    // Orbit Ring, Ascent Trajectory Spline, Launch Pad & Karman Space-Exit Gate
     const orbitGroup = new THREE.Group();
     worldGroup.add(orbitGroup);
     let orbitLine: THREE.LineLoop | null = null;
+    let plannedAscentLine: THREE.Line | null = null;
+    let flownAscentLine: THREE.Line | null = null;
+    let ascentCurve: THREE.CatmullRomCurve3 | null = null;
+    let ascentSamplePoints: THREE.Vector3[] = [];
+    let lastCurveOrbitRadius = -1;
     let orbitRadius = 7.4;
+
+    // Launch Pad & Umbilical Clamp Towers (placed on planet surface at P0 of ascent trajectory)
+    const launchPadGroup = new THREE.Group();
+    const padDeck = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.55, 0.72, 0.18, 16),
+      new THREE.MeshStandardMaterial({ color: '#475569', metalness: 0.75, roughness: 0.35 })
+    );
+    const padTowerMat = new THREE.MeshStandardMaterial({ color: '#94A3B8', metalness: 0.7, roughness: 0.35 });
+    const towerLeft = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.95, 0.11), padTowerMat);
+    towerLeft.position.set(-0.38, 0.48, 0);
+    const towerRight = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.95, 0.11), padTowerMat);
+    towerRight.position.set(0.38, 0.48, 0);
+    const padBeacon = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 10, 8),
+      new THREE.MeshBasicMaterial({ color: '#F59E0B' })
+    );
+    padBeacon.position.set(0, 0.98, 0.25);
+    const padSmokeMat = new THREE.MeshBasicMaterial({
+      color: '#CBD5E1',
+      transparent: true,
+      opacity: 0.0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const padSmoke = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.26, 10, 22), padSmokeMat);
+    padSmoke.rotation.x = Math.PI / 2;
+    padSmoke.position.y = 0.08;
+    padSmoke.visible = false;
+    launchPadGroup.add(padDeck, towerLeft, towerRight, padBeacon, padSmoke);
+    orbitGroup.add(launchPadGroup);
+
+    // Karman Line (Space Exit Gate) marker ring encircling the ascent path
+    const karmanGate = new THREE.Mesh(
+      new THREE.TorusGeometry(0.46, 0.04, 10, 28),
+      new THREE.MeshBasicMaterial({ color: '#38BDF8', transparent: true, opacity: 0.85 })
+    );
+    orbitGroup.add(karmanGate);
 
     // Ground RF Downlink Cone Beam
     const beamMat = new THREE.MeshBasicMaterial({
@@ -720,18 +976,73 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
     maneuverHandle.visible = false;
     orbitGroup.add(maneuverHandle);
 
-    // Spacecraft & Launch Vehicle Containers
+    // Separate Spacecraft Anchor & Rocket Anchor for clean SECO satellite separation
     const craftAnchor = new THREE.Group();
     scene.add(craftAnchor);
+
+    const rocketAnchor = new THREE.Group();
+    scene.add(rocketAnchor);
 
     let builtCraft = buildProceduralSpacecraft(propsRef.current.evaluation, solarTex);
     craftAnchor.add(builtCraft.root);
 
     let rocketStack = buildRocketStack(propsRef.current.evaluation.launchVehicle.id);
-    rocketStack.rocket.visible = false;
-    craftAnchor.add(rocketStack.rocket);
+    rocketAnchor.visible = false;
+    rocketAnchor.add(rocketStack.rocket);
 
     let baseOrbitRadius = 7.4;
+
+    const rebuildAscentTrajectory = (targetOrbitR: number) => {
+      if (Math.abs(targetOrbitR - lastCurveOrbitRadius) < 0.01 && ascentCurve) return;
+      lastCurveOrbitRadius = targetOrbitR;
+
+      const ctrlPts = buildAscentControlPoints(planetRadius, targetOrbitR).map(
+        (p) => new THREE.Vector3(p.x, p.y, p.z)
+      );
+      ascentCurve = new THREE.CatmullRomCurve3(ctrlPts, false, 'centripetal', 0.45);
+      ascentSamplePoints = ascentCurve.getPoints(90);
+
+      if (plannedAscentLine) {
+        orbitGroup.remove(plannedAscentLine);
+        plannedAscentLine.geometry.dispose();
+        (plannedAscentLine.material as THREE.Material).dispose();
+      }
+      const plannedGeo = new THREE.BufferGeometry().setFromPoints(ascentSamplePoints);
+      const plannedMat = new THREE.LineDashedMaterial({
+        color: '#F59E0B',
+        dashSize: 0.34,
+        gapSize: 0.2,
+        transparent: true,
+        opacity: 0.75,
+      });
+      plannedAscentLine = new THREE.Line(plannedGeo, plannedMat);
+      plannedAscentLine.computeLineDistances();
+      orbitGroup.add(plannedAscentLine);
+
+      if (!flownAscentLine) {
+        const flownGeo = new THREE.BufferGeometry().setFromPoints([ascentSamplePoints[0], ascentSamplePoints[0]]);
+        const flownMat = new THREE.LineBasicMaterial({
+          color: '#38BDF8',
+          transparent: true,
+          opacity: 0.95,
+        });
+        flownAscentLine = new THREE.Line(flownGeo, flownMat);
+        flownAscentLine.visible = false;
+        orbitGroup.add(flownAscentLine);
+      }
+
+      // Position Launchpad flush on surface along outward radial normal at P0
+      const p0 = ctrlPts[0];
+      const padNormal = p0.clone().normalize();
+      launchPadGroup.position.copy(p0);
+      launchPadGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), padNormal);
+
+      // Position Karman Line Space Exit Gate at ~65% along ascent curve
+      const karmanPos = ascentCurve.getPointAt(0.65);
+      const karmanTan = ascentCurve.getTangentAt(0.65).normalize();
+      karmanGate.position.copy(karmanPos);
+      karmanGate.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), karmanTan);
+    };
 
     const rebuildOrbit = () => {
       const ev = propsRef.current.evaluation;
@@ -755,6 +1066,7 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       if (orbitLine) {
         orbitGroup.remove(orbitLine);
         orbitLine.geometry.dispose();
+        (orbitLine.material as THREE.Material).dispose();
       }
       const pts: THREE.Vector3[] = [];
       for (let i = 0; i < 96; i++) {
@@ -766,6 +1078,8 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       orbitLine = new THREE.LineLoop(lineGeo, lineMat);
       orbitGroup.rotation.set((ev.orbit.inclinationDeg * Math.PI) / 180, 0, 0.25);
       orbitGroup.add(orbitLine);
+      lastCurveOrbitRadius = -1;
+      rebuildAscentTrajectory(orbitRadius);
     };
 
     const rebuildSpacecraft = () => {
@@ -773,10 +1087,10 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       builtCraft = buildProceduralSpacecraft(propsRef.current.evaluation, solarTex);
       craftAnchor.add(builtCraft.root);
 
-      craftAnchor.remove(rocketStack.rocket);
+      rocketAnchor.remove(rocketStack.rocket);
+      rocketStack.hullTex.dispose();
       rocketStack = buildRocketStack(propsRef.current.evaluation.launchVehicle.id);
-      rocketStack.rocket.visible = false;
-      craftAnchor.add(rocketStack.rocket);
+      rocketAnchor.add(rocketStack.rocket);
     };
 
     sceneControlsRef.current = { rebuildOrbit, rebuildSpacecraft };
@@ -903,6 +1217,7 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
         orbitLine.scale.setScalar(radiusScale);
       }
       orbitGroup.rotation.set(((curEval.orbit.inclinationDeg + incOffset) * Math.PI) / 180, 0, 0.25);
+      rebuildAscentTrajectory(orbitRadius);
 
       // Update maneuver handle visibility & placement on the orbit
       const showHandle =
@@ -956,6 +1271,19 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
         builtCraft.thrusterPlume.visible = false;
       }
 
+      // Helper to convert orbitGroup local space -> world space cleanly
+      const toWorldOrbitPos = (localVec: THREE.Vector3) =>
+        localVec.clone().applyEuler(orbitGroup.rotation).add(worldGroup.position);
+      const upY = new THREE.Vector3(0, 1, 0);
+
+      // Trajectory markers visibility: show planned surface->space trajectory in Orbit View & Ascent/Deploy
+      const showTrajectoryOverlay =
+        (curMode === 'workbench' && curPreset === 'orbit') ||
+        (curMode === 'simulation' && (curSim?.phase === 'launch' || curSim?.phase === 'deployment'));
+      launchPadGroup.visible = showTrajectoryOverlay;
+      karmanGate.visible = showTrajectoryOverlay;
+      if (plannedAscentLine) plannedAscentLine.visible = showTrajectoryOverlay;
+
       // Positioning & Phase Animation
       if (curMode === 'title') {
         titleOrbitAngle += dt * 0.28;
@@ -969,7 +1297,9 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
         craftAnchor.position.copy(worldGroup.position).add(orbitPt);
         craftAnchor.scale.setScalar(0.65);
         craftAnchor.lookAt(worldGroup.position);
-        rocketStack.rocket.visible = false;
+        rocketAnchor.visible = false;
+        if (flownAscentLine) flownAscentLine.visible = false;
+        padSmoke.visible = false;
         builtCraft.root.visible = true;
         beamMesh.visible = false;
 
@@ -983,7 +1313,9 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       } else if (curMode === 'workbench' && curPreset === 'assembly') {
         worldGroup.visible = false;
         beamMesh.visible = false;
-        rocketStack.rocket.visible = false;
+        rocketAnchor.visible = false;
+        if (flownAscentLine) flownAscentLine.visible = false;
+        padSmoke.visible = false;
         builtCraft.root.visible = true;
         craftAnchor.position.set(0, 0, 0);
         craftAnchor.scale.setScalar(1.0);
@@ -1015,49 +1347,170 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
         craftAnchor.position.copy(orbitPt);
         craftAnchor.scale.setScalar(0.58);
         craftAnchor.lookAt(0, 0, 0);
-        rocketStack.rocket.visible = false;
+        rocketAnchor.visible = false;
+        if (flownAscentLine) flownAscentLine.visible = false;
+        padSmoke.visible = false;
+        towerLeft.rotation.z = 0;
+        towerRight.rotation.z = 0;
         builtCraft.root.visible = true;
         beamMesh.visible = false;
 
         if (lastPresetKey !== 'workbench-orbit') {
-          targetCamPos.set(0, 7.5, 16.5);
+          targetCamPos.set(1.5, 7.2, 16.2);
           targetLookAt.set(0, 0, 0);
           camera.position.copy(targetCamPos);
           controls.target.copy(targetLookAt);
           lastPresetKey = 'workbench-orbit';
         }
-      } else if (curMode === 'simulation' && curSim) {
+      } else if (curMode === 'simulation' && curSim && ascentCurve) {
         worldGroup.visible = true;
         worldGroup.position.set(0, 0, 0);
+        beamMesh.visible = false;
 
         if (curSim.phase === 'launch') {
-          const p = curSim.launchProgress;
-          rocketStack.rocket.visible = true;
-          builtCraft.root.visible = p > 0.78;
-          rocketStack.firstStage.visible = p < 0.62;
-          rocketStack.fairing.visible = p < 0.78;
-          rocketStack.flame.scale.set(1, 0.85 + Math.sin(now * 0.04) * 0.25, 1);
+          const p = Math.max(0.001, Math.min(1, curSim.launchProgress));
+          const rocketScale = 0.52;
 
-          const ascentR = planetRadius + 0.4 + p * (orbitRadius - planetRadius - 0.4);
-          const ascentAngle = p * 0.65;
-          craftAnchor.position.set(
-            Math.cos(ascentAngle) * ascentR,
-            Math.sin(ascentAngle) * ascentR * 0.5,
-            0
-          );
-          craftAnchor.scale.setScalar(0.65);
-          craftAnchor.rotation.set(0, 0, -ascentAngle - Math.PI * 0.35);
-          beamMesh.visible = false;
-
-          if (lastPresetKey !== 'sim-launch') {
-            targetCamPos.set(8.5, 3.2, 10.5);
-            targetLookAt.copy(craftAnchor.position);
-            camera.position.copy(targetCamPos);
-            lastPresetKey = 'sim-launch';
+          // Update active blue ascent trail along spline up to p
+          if (flownAscentLine && ascentSamplePoints.length > 2) {
+            flownAscentLine.visible = true;
+            const maxIdx = Math.max(2, Math.round(p * (ascentSamplePoints.length - 1)) + 1);
+            const partialPts = ascentSamplePoints.slice(0, maxIdx);
+            partialPts.push(ascentCurve.getPointAt(p));
+            flownAscentLine.geometry.dispose();
+            flownAscentLine.geometry = new THREE.BufferGeometry().setFromPoints(partialPts);
+            (flownAscentLine.material as THREE.LineBasicMaterial).opacity = 0.95;
           }
-          controls.target.lerp(craftAnchor.position, 0.12);
+
+          // Retract umbilical towers and expand liftoff exhaust smoke near surface
+          const clampRetract = Math.min(1, p / 0.08);
+          towerLeft.rotation.z = clampRetract * 0.42;
+          towerRight.rotation.z = -clampRetract * 0.42;
+          if (p < 0.2) {
+            padSmoke.visible = true;
+            const smokeT = p / 0.2;
+            padSmoke.scale.setScalar(1 + smokeT * 2.8);
+            padSmokeMat.opacity = Math.max(0, 0.55 * (1 - smokeT));
+          } else {
+            padSmoke.visible = false;
+          }
+
+          // Position rocket along the curved surface-to-orbit spline
+          const curvePosLocal = ascentCurve.getPointAt(p);
+          const curveTanLocal = ascentCurve.getTangentAt(p).normalize();
+          const curvePosWorld = toWorldOrbitPos(curvePosLocal);
+          const curveTanWorld = curveTanLocal.clone().applyEuler(orbitGroup.rotation).normalize();
+
+          rocketAnchor.visible = true;
+          rocketAnchor.scale.setScalar(rocketScale);
+          rocketAnchor.quaternion.setFromUnitVectors(upY, curveTanWorld);
+          rocketAnchor.rotateY(p * 0.7);
+
+          // Stage separation & fairing jettison kinematics
+          if (p < 0.9) {
+            rocketAnchor.position.copy(curvePosWorld);
+          } else {
+            // SECO & Upper Stage backs away as satellite separates onto orbital ring
+            const sepSat = (p - 0.9) / 0.1;
+            rocketAnchor.position.copy(curvePosWorld).addScaledVector(curveTanWorld, -(0.9 + sepSat * 2.4));
+          }
+
+          // Stage 1 separation at MECO (p >= 0.56)
+          if (p < 0.56) {
+            rocketStack.firstStage.visible = true;
+            rocketStack.firstStage.position.set(0, 0, 0);
+            rocketStack.firstStage.rotation.set(0, 0, 0);
+            rocketStack.stage1Flame.visible = true;
+            rocketStack.stage1Flame.scale.set(1, 0.85 + Math.sin(now * 0.05) * 0.22, 1);
+            rocketStack.stage2Flame.visible = false;
+          } else {
+            const sep1 = Math.min(1, (p - 0.56) / 0.24);
+            rocketStack.firstStage.visible = p < 0.82;
+            rocketStack.firstStage.position.set(-sep1 * 0.85, -sep1 * 5.2, sep1 * 0.45);
+            rocketStack.firstStage.rotation.set(sep1 * 0.4, 0, sep1 * 1.15);
+            rocketStack.stage1Flame.visible = false;
+
+            rocketStack.stage2Flame.visible = p < 0.9;
+            rocketStack.stage2Flame.scale.set(1, 0.82 + Math.cos(now * 0.06) * 0.22, 1);
+          }
+
+          // Fairing jettison in Space past Karman Gate (p >= 0.72)
+          if (p < 0.72) {
+            rocketStack.fairingLeft.visible = true;
+            rocketStack.fairingRight.visible = true;
+            rocketStack.fairingLeft.position.set(0, 1.15, 0);
+            rocketStack.fairingLeft.rotation.set(0, 0, 0);
+            rocketStack.fairingRight.position.set(0, 1.15, 0);
+            rocketStack.fairingRight.rotation.set(0, 0, 0);
+            builtCraft.root.visible = false;
+          } else {
+            const sepF = Math.min(1, (p - 0.72) / 0.18);
+            const showFairing = p < 0.92;
+            rocketStack.fairingLeft.visible = showFairing;
+            rocketStack.fairingRight.visible = showFairing;
+            rocketStack.fairingLeft.position.set(-sepF * 2.1, 1.15 - sepF * 1.6, 0);
+            rocketStack.fairingLeft.rotation.set(0, 0, sepF * 1.25);
+            rocketStack.fairingRight.position.set(sepF * 2.1, 1.15 - sepF * 1.6, 0);
+            rocketStack.fairingRight.rotation.set(0, 0, -sepF * 1.25);
+
+            // Reveal stowed satellite mounted on Payload Attach Fitting -> release forward at p >= 0.90
+            builtCraft.root.visible = true;
+            if (p < 0.9) {
+              craftAnchor.position.copy(curvePosWorld).addScaledVector(curveTanWorld, 0.78);
+              craftAnchor.quaternion.copy(rocketAnchor.quaternion);
+              craftAnchor.scale.setScalar(0.42);
+            } else {
+              const sepSat = (p - 0.9) / 0.1;
+              craftAnchor.position.copy(curvePosWorld);
+              craftAnchor.scale.setScalar(0.42 + sepSat * 0.2);
+              craftAnchor.lookAt(0, 0, 0);
+            }
+          }
+
+          // Follow camera framing both the planet horizon/trajectory and ascending rocket
+          if (lastPresetKey !== 'sim-launch') {
+            const camInit = curvePosWorld.clone().add(new THREE.Vector3(3.4, 5.2, 10.2));
+            camera.position.copy(camInit);
+            controls.target.copy(curvePosWorld);
+            lastPresetKey = 'sim-launch';
+          } else {
+            const camFollow = curvePosWorld
+              .clone()
+              .multiplyScalar(0.55)
+              .add(new THREE.Vector3(2.8, 5.8, 12.2));
+            camera.position.lerp(camFollow, 0.035);
+            const lookTarget = curvePosWorld.clone().lerp(new THREE.Vector3(0, 0, 0), 0.25);
+            controls.target.lerp(lookTarget, 0.08);
+          }
         } else {
-          rocketStack.rocket.visible = false;
+          // Deployment & Operations phases
+          padSmoke.visible = false;
+          const isDeploying = curSim.phase === 'deployment';
+          if (isDeploying && curSim.deployProgress < 0.45) {
+            const dT = curSim.deployProgress / 0.45;
+            const pEndLocal = ascentCurve.getPointAt(1);
+            const tEndWorld = ascentCurve.getTangentAt(1).applyEuler(orbitGroup.rotation).normalize();
+            rocketAnchor.visible = true;
+            rocketStack.firstStage.visible = false;
+            rocketStack.fairingLeft.visible = false;
+            rocketStack.fairingRight.visible = false;
+            rocketStack.stage2Flame.visible = false;
+            rocketAnchor.position.copy(toWorldOrbitPos(pEndLocal)).addScaledVector(tEndWorld, -(3.3 + dT * 4.2));
+            rocketAnchor.quaternion.setFromUnitVectors(upY, tEndWorld);
+          } else {
+            rocketAnchor.visible = false;
+          }
+
+          if (flownAscentLine) {
+            flownAscentLine.visible = isDeploying;
+            if (isDeploying) {
+              (flownAscentLine.material as THREE.LineBasicMaterial).opacity = Math.max(
+                0.15,
+                0.75 * (1 - curSim.deployProgress)
+              );
+            }
+          }
+
           builtCraft.root.visible = true;
 
           const angle = curSim.orbitAngleRad;
@@ -1136,6 +1589,7 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       controls.dispose();
       solarTex.dispose();
       planetTex.dispose();
+      rocketStack.hullTex.dispose();
       planetGeo.dispose();
       planetMat.dispose();
       atmoGeo.dispose();
@@ -1144,6 +1598,25 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       starMat.dispose();
       beamMesh.geometry.dispose();
       beamMat.dispose();
+      padDeck.geometry.dispose();
+      (padDeck.material as THREE.Material).dispose();
+      towerLeft.geometry.dispose();
+      towerRight.geometry.dispose();
+      padTowerMat.dispose();
+      padBeacon.geometry.dispose();
+      (padBeacon.material as THREE.Material).dispose();
+      padSmoke.geometry.dispose();
+      padSmokeMat.dispose();
+      karmanGate.geometry.dispose();
+      (karmanGate.material as THREE.Material).dispose();
+      if (plannedAscentLine) {
+        plannedAscentLine.geometry.dispose();
+        (plannedAscentLine.material as THREE.Material).dispose();
+      }
+      if (flownAscentLine) {
+        flownAscentLine.geometry.dispose();
+        (flownAscentLine.material as THREE.Material).dispose();
+      }
       maneuverHandle.geometry.dispose();
       (maneuverHandle.material as THREE.Material).dispose();
       maneuverHalo.geometry.dispose();

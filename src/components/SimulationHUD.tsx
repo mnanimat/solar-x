@@ -4,11 +4,13 @@ import type { ControllerProfile, FlightControlInput } from '../engine/flightCont
 import { TEAM_ROLES } from '../engine/missionCatalog';
 import type { ViewportCameraPreset } from './SpacecraftAndOrbit3D';
 import { GroundTrack2D } from './GroundTrack2D';
+import { getAscentTelemetry } from '../engine/launchTrajectory';
 import {
   AlertTriangle,
   FastForward,
   Pause,
   Play,
+  Rocket,
   RotateCcw,
   Volume2,
   VolumeX,
@@ -86,11 +88,22 @@ export const SimulationHUD: React.FC<SimulationHUDProps> = ({
           : 'Keyboard + Mouse';
 
   const inOps = simState.phase === 'operations';
+  const showAscentStrip = simState.phase === 'launch' || simState.phase === 'deployment';
+  const ascentTelem = showAscentStrip
+    ? getAscentTelemetry(
+        simState.launchProgress,
+        simState.deployProgress,
+        simState.phase,
+        evaluation.orbit.altitudeKm,
+        evaluation.orbit.targetBody
+      )
+    : null;
 
   return (
     <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-3 sm:p-4">
-      {/* Slim Top Telemetry Bar */}
-      <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 bg-[#0B111E]/95 border border-slate-700/80 rounded-xl px-3.5 py-2 shadow-xl">
+      <div className="flex flex-col gap-2">
+        {/* Slim Top Telemetry Bar */}
+        <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 bg-[#0B111E]/95 border border-slate-700/80 rounded-xl px-3.5 py-2 shadow-xl">
         <div className="flex items-center gap-3">
           <div>
             <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-cyan-400">
@@ -192,6 +205,62 @@ export const SimulationHUD: React.FC<SimulationHUDProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Ascent Trajectory & Staging Milestone Strip (Launch -> Space -> Satellite Release) */}
+      {ascentTelem && (
+        <div className="pointer-events-auto mx-auto w-full max-w-3xl bg-[#0B111E]/95 border border-slate-700/80 rounded-xl px-4 py-2 shadow-xl flex flex-wrap items-center justify-between gap-3 font-mono-tabular text-xs">
+          <div className="flex items-center gap-2.5">
+            <Rocket className="w-4 h-4 text-amber-400 shrink-0" />
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                {evaluation.launchVehicle.name} Ascent Trajectory
+              </div>
+              <div className="font-semibold text-cyan-300">{ascentTelem.milestoneLabel}</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div>
+              <span className="text-slate-400 mr-1">ALT</span>
+              <strong className="text-slate-100">{ascentTelem.altitudeKm.toFixed(0)} km</strong>
+            </div>
+            <div>
+              <span className="text-slate-400 mr-1">VEL</span>
+              <strong className="text-slate-100">{ascentTelem.velocityKms.toFixed(2)} km/s</strong>
+            </div>
+            <span
+              className={`px-2 py-0.5 rounded text-[10px] uppercase font-semibold border ${
+                ascentTelem.inSpace
+                  ? 'bg-cyan-500/20 border-cyan-400/60 text-cyan-200'
+                  : 'bg-amber-500/20 border-amber-400/60 text-amber-200'
+              }`}
+            >
+              {ascentTelem.inSpace ? 'In Space (>100 km)' : 'Atmosphere'}
+            </span>
+          </div>
+
+          <div className="w-full grid grid-cols-4 gap-1.5 text-[10px] uppercase">
+            {[
+              { label: '1. Surface Pad', done: simState.launchProgress > 0.08 || simState.phase !== 'launch' },
+              { label: '2. MECO / Stg 1 Sep', done: ascentTelem.stage1Separated },
+              { label: '3. Space Fairing Sep', done: ascentTelem.fairingSeparated },
+              { label: '4. Satellite Deploy', done: ascentTelem.payloadSeparated },
+            ].map((step) => (
+              <div
+                key={step.label}
+                className={`px-2 py-1 rounded border text-center truncate ${
+                  step.done
+                    ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
+                    : 'bg-slate-900 border-slate-800 text-slate-500'
+                }`}
+              >
+                {step.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
 
       {/* Center Anomaly Tactical Decision Drawer (only when activeAnomaly triggers) */}
       {simState.activeAnomaly && (

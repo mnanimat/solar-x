@@ -82,6 +82,7 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
     viewPreset === 'orbit' ? '3d-orbit' : '3d-assembly'
   );
   const [mobileMarginsOpen, setMobileMarginsOpen] = useState(false);
+  const [showFailureModal, setShowFailureModal] = useState(false);
 
   const activeRoleCfg = TEAM_ROLES.find((r) => r.id === design.activeRole) ?? TEAM_ROLES[0];
   const signoffCount = Object.values(design.roleSignoffs).filter(Boolean).length;
@@ -236,16 +237,22 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
 
           <button
             type="button"
-            onClick={onLaunchMission}
-            disabled={!evaluation.canLaunch}
-            className={`px-4 py-2 rounded-lg font-display font-bold text-xs sm:text-sm uppercase tracking-wide flex items-center gap-2 transition-colors ${
+            onClick={() => {
+              if (evaluation.canLaunch) {
+                onLaunchMission();
+              } else {
+                missionAudio.playWarn();
+                setShowFailureModal(true);
+              }
+            }}
+            className={`px-4 py-2 rounded-lg font-display font-bold text-xs sm:text-sm uppercase tracking-wide flex items-center gap-2 transition-colors cursor-pointer ${
               evaluation.canLaunch
-                ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 cursor-pointer'
-                : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
+                : 'bg-rose-950/90 hover:bg-rose-900 text-rose-200 border border-rose-500/70'
             }`}
           >
-            <Rocket className="w-4 h-4" />
-            {evaluation.canLaunch ? 'Launch Mission' : `${evaluation.blockers.length} Blocker(s)`}
+            {evaluation.canLaunch ? <Rocket className="w-4 h-4" /> : <AlertOctagon className="w-4 h-4 text-rose-400" />}
+            {evaluation.canLaunch ? 'Launch Mission' : `Structural Alert (${evaluation.blockers.length})`}
           </button>
         </div>
       </header>
@@ -1044,6 +1051,135 @@ export const DesignWorkbench: React.FC<DesignWorkbenchProps> = ({
           </div>
         </aside>
       </div>
+
+      {/* Structural Engineering & Launch Authorization Failure Alert Modal */}
+      {showFailureModal && (
+        <div
+          className="pointer-events-auto fixed inset-0 z-50 bg-[#05080F]/80 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Structural Engineering & Launch Authorization Failure Alert"
+        >
+          <div className="w-full max-w-xl bg-[#0B111E] border border-rose-500/80 rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-400">
+                  <AlertOctagon className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-mono-tabular uppercase tracking-wider text-rose-400">
+                    Launch Authorization Hold · CML 4 Gate
+                  </div>
+                  <h3 className="font-display font-bold text-lg text-slate-50">
+                    Structural Engineering Failure Alert
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFailureModal(false)}
+                className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-xs text-slate-300 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Launch authorization was rejected by Flight Safety. Resolve the coupled resource and structural violations below before ignition:
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono-tabular">
+              <div className="bg-[#070B13] border border-slate-800 rounded-lg p-2">
+                <div className="text-[10px] text-slate-400">Mass vs LV</div>
+                <div className={evaluation.dryMassKg > evaluation.lvCapacityKg ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
+                  {evaluation.dryMassKg.toFixed(1)} / {evaluation.lvCapacityKg} kg
+                </div>
+              </div>
+              <div className="bg-[#070B13] border border-slate-800 rounded-lg p-2">
+                <div className="text-[10px] text-slate-400">Budget Cap</div>
+                <div className={evaluation.totalCostM > evaluation.budgetCapM ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
+                  ${evaluation.totalCostM.toFixed(1)}M / ${evaluation.budgetCapM.toFixed(1)}M
+                </div>
+              </div>
+              <div className="bg-[#070B13] border border-slate-800 rounded-lg p-2">
+                <div className="text-[10px] text-slate-400">Power Margin</div>
+                <div className={evaluation.powerMarginPct < 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
+                  {evaluation.powerMarginPct.toFixed(0)}%
+                </div>
+              </div>
+              <div className="bg-[#070B13] border border-slate-800 rounded-lg p-2">
+                <div className="text-[10px] text-slate-400">RF Link</div>
+                <div className={evaluation.linkMarginDb < 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
+                  {evaluation.linkMarginDb.toFixed(1)} dB
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 max-h-52 overflow-y-auto">
+              {evaluation.blockers.map((b, idx) => (
+                <div
+                  key={`modal-blk-${idx}`}
+                  className="bg-rose-950/60 border border-rose-500/50 rounded-lg p-3 text-xs text-rose-100 flex items-start gap-2.5"
+                >
+                  <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <span>{b}</span>
+                </div>
+              ))}
+              {evaluation.warnings.map((w, idx) => (
+                <div
+                  key={`modal-wrn-${idx}`}
+                  className="bg-amber-950/50 border border-amber-500/40 rounded-lg p-2.5 text-xs text-amber-200 flex items-start gap-2.5"
+                >
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <span>{w}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800">
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('cml2');
+                    setShowFailureModal(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-xs text-cyan-300 cursor-pointer"
+                >
+                  Open Bus &amp; Rocket (CML 2)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('cml3');
+                    setShowFailureModal(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-xs text-cyan-300 cursor-pointer"
+                >
+                  Open Science (CML 3)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('cml4');
+                    setShowFailureModal(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-xs text-cyan-300 cursor-pointer"
+                >
+                  Open Orbit &amp; Comms (CML 4)
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFailureModal(false)}
+                className="px-4 py-1.5 rounded-lg bg-rose-500 hover:bg-rose-400 text-slate-950 font-display font-bold text-xs uppercase cursor-pointer"
+              >
+                Acknowledge Hold
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

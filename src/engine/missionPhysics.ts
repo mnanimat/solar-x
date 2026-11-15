@@ -1000,9 +1000,9 @@ export function stepSimulationTick(
     }
   }
 
-  // Phase 1: Rocket Launch & Staging (takes ~4.5s at 1x)
+  // Phase 1: Rocket Launch & Staging (takes ~7.7s at 1x so liftoff -> space -> deploy is clearly readable)
   if (prev.phase === 'launch') {
-    const launchProgress = Math.min(1, prev.launchProgress + dtSeconds * 0.24 * Math.min(speedMultiplier, 4));
+    const launchProgress = Math.min(1, prev.launchProgress + dtSeconds * 0.13 * Math.min(speedMultiplier, 5));
     next.launchProgress = launchProgress;
     if (launchProgress >= 1) {
       next.phase = 'deployment';
