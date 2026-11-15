@@ -862,11 +862,11 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
     sunLight.position.set(16, 8, 12);
     scene.add(sunLight);
 
-    const rimLight = new THREE.DirectionalLight('#38BDF8', isSoftwareGl ? 1.25 : 0.7);
+    const rimLight = new THREE.DirectionalLight('#60A5FA', isSoftwareGl ? 1.35 : 0.95);
     rimLight.position.set(-12, -4, -10);
     scene.add(rimLight);
 
-    const hemiLight = new THREE.HemisphereLight('#38BDF8', '#090D16', isSoftwareGl ? 0.95 : 0.6);
+    const hemiLight = new THREE.HemisphereLight('#7DD3FC', '#0F172A', isSoftwareGl ? 1.05 : 0.8);
     scene.add(hemiLight);
 
     // Starfield
@@ -1507,13 +1507,13 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
 
         if (curIntro && ascentCurve) {
           if (curIntro.phase === 'launch') {
-            renderRocketLaunchFrame(curIntro.launchProgress, now, 0.56, 0.45, 0.65, worldGroup.position);
+            renderRocketLaunchFrame(curIntro.launchProgress, now, 0.72, 0.58, 0.92, worldGroup.position);
           } else {
             renderDeployedOrbitFrame(
               curIntro.phase,
               curIntro.deployProgress,
               curIntro.orbitAngleRad,
-              0.65,
+              0.92,
               worldGroup.position
             );
           }
@@ -1536,9 +1536,9 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
           scratchTangent.crossVectors(scratchSideAxis, scratchOutward).normalize();
 
           const isLaunchPhase = curIntro.phase === 'launch';
-          const outDist = isLaunchPhase ? 4.6 : 4.2;
-          const sideDist = isLaunchPhase ? 3.2 : 2.6;
-          const backDist = isLaunchPhase ? 3.8 : 3.5;
+          const outDist = isLaunchPhase ? 3.8 : 2.9;
+          const sideDist = isLaunchPhase ? 2.35 : 1.8;
+          const backDist = isLaunchPhase ? 3.3 : 2.5;
 
           scratchChaseCam
             .copy(focusObjPos)
@@ -1546,14 +1546,14 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
             .addScaledVector(scratchSideAxis, sideDist)
             .addScaledVector(scratchTangent, -backDist);
 
-          scratchChaseLook.copy(focusObjPos).lerp(worldGroup.position, isLaunchPhase ? 0.16 : 0.12);
+          scratchChaseLook.copy(focusObjPos).lerp(worldGroup.position, isLaunchPhase ? 0.08 : 0.04);
 
-          // Shift framing slightly left in camera-space so rocket & satellite sit in the open right 60% of the screen
+          // Shift framing slightly left in camera-space so rocket & satellite sit heroically in clear view above the compact panel
           scratchCamFwd.copy(scratchChaseLook).sub(scratchChaseCam).normalize();
           scratchCamRight.crossVectors(scratchCamFwd, upY);
           if (scratchCamRight.lengthSq() > 0.001) {
             scratchCamRight.normalize();
-            const screenShift = isLaunchPhase ? -0.9 : -1.35;
+            const screenShift = isLaunchPhase ? -0.45 : -0.55;
             scratchChaseCam.addScaledVector(scratchCamRight, screenShift);
             scratchChaseLook.addScaledVector(scratchCamRight, screenShift);
           }

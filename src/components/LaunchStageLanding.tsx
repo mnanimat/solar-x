@@ -7,9 +7,12 @@ import { WindowControls } from './WindowControls';
 import {
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Maximize2,
   Rocket,
   RotateCcw,
+  SlidersHorizontal,
   Sparkles,
   User,
   Users,
@@ -43,6 +46,7 @@ export const LaunchStageLanding: React.FC<LaunchStageLandingProps> = ({
   const [stage, setStage] = useState<StarterStage>('launching');
   const [decisionNote, setDecisionNote] = useState<string>('');
   const [starterScore, setStarterScore] = useState<number>(96);
+  const [optionsExpanded, setOptionsExpanded] = useState(false);
   const [panelMinimized, setPanelMinimized] = useState(false);
   const [panelClosed, setPanelClosed] = useState(false);
 
@@ -242,17 +246,21 @@ export const LaunchStageLanding: React.FC<LaunchStageLandingProps> = ({
             </button>
           </div>
         ) : (
-          <div className="pointer-events-auto w-full max-w-[445px] bg-[#0B111E]/95 border border-slate-700/85 rounded-2xl p-4 shadow-2xl flex flex-col gap-3 max-h-[82vh] overflow-y-auto">
+          <div
+            className={`pointer-events-auto w-full ${
+              optionsExpanded ? 'max-w-[435px] p-4 gap-3' : 'max-w-[345px] p-3 gap-2'
+            } bg-[#0B111E]/95 border border-slate-700/85 rounded-2xl shadow-2xl flex flex-col max-h-[82vh] overflow-y-auto transition-all`}
+          >
             {/* Window Header with Minimize + Close */}
-            <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
               <div className="min-w-0">
-                <div className="text-[10px] font-mono-tabular uppercase tracking-widest text-cyan-400 flex items-center gap-2">
-                  <span>Live Rocket Launch &amp; Options</span>
+                <div className="text-[10px] font-mono-tabular uppercase tracking-widest text-cyan-400 flex items-center gap-1.5">
+                  <span>{optionsExpanded ? 'Launch & Mission Options' : 'Live Launch'}</span>
                   <span className={hudTelemetry.inSpace ? 'text-emerald-400' : 'text-amber-300'}>
                     · {hudTelemetry.inSpace ? 'IN SPACE' : 'ATMOSPHERE'}
                   </span>
                 </div>
-                <div className="font-display font-bold text-sm sm:text-base text-slate-50 truncate">
+                <div className="font-display font-bold text-sm text-slate-50 truncate">
                   {selectedScenario.title}
                 </div>
               </div>
@@ -274,150 +282,180 @@ export const LaunchStageLanding: React.FC<LaunchStageLandingProps> = ({
               </div>
             ) : (
               <>
-                {/* Live Ascent Telemetry */}
-                <div className="grid grid-cols-3 gap-2 font-mono-tabular text-xs bg-[#070A10] border border-slate-800 rounded-lg px-3 py-2">
+                {/* Compact Live Ascent Telemetry Strip */}
+                <div className="flex items-center justify-between gap-2 font-mono-tabular text-[11px] bg-[#070A10] border border-slate-800 rounded-lg px-2.5 py-1.5">
                   <div>
-                    <div className="text-[10px] text-slate-500">ALTITUDE</div>
-                    <div className="text-slate-100 font-semibold">{Math.round(hudTelemetry.altitudeKm)} km</div>
+                    <span className="text-slate-500 mr-1">ALT</span>
+                    <span className="text-slate-100 font-semibold">{Math.round(hudTelemetry.altitudeKm)} km</span>
                   </div>
                   <div>
-                    <div className="text-[10px] text-slate-500">VELOCITY</div>
-                    <div className="text-cyan-300 font-semibold">{hudTelemetry.velocityKms.toFixed(2)} km/s</div>
+                    <span className="text-slate-500 mr-1">VEL</span>
+                    <span className="text-cyan-300 font-semibold">{hudTelemetry.velocityKms.toFixed(2)} km/s</span>
                   </div>
-                  <div>
-                    <div className="text-[10px] text-slate-500">STATUS</div>
-                    <div className="text-emerald-300 font-semibold truncate">
-                      {hudTelemetry.payloadSeparated
-                        ? 'Satellite Orbit'
-                        : hudTelemetry.fairingSeparated
-                          ? 'Fairing Split'
-                          : hudTelemetry.stage1Separated
-                            ? 'Stage 2 Burn'
-                            : 'Stage 1 Ascent'}
-                    </div>
+                  <div className="text-emerald-300 font-semibold truncate">
+                    {hudTelemetry.payloadSeparated
+                      ? 'Satellite Orbit'
+                      : hudTelemetry.fairingSeparated
+                        ? 'Fairing Split'
+                        : hudTelemetry.stage1Separated
+                          ? 'Stage 2 Burn'
+                          : 'Stage 1'}
                   </div>
+                  <button
+                    type="button"
+                    onClick={replayLaunch}
+                    className="text-cyan-300 hover:text-cyan-200 flex items-center gap-0.5 cursor-pointer shrink-0"
+                    title="Replay Rocket Launch"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
                 </div>
 
-                {/* Ascent Milestones */}
-                <div className="grid grid-cols-4 gap-1 text-[10px] font-mono-tabular text-center">
-                  {[
-                    ['Liftoff', true],
-                    ['Stage 1 Sep', hudTelemetry.stage1Separated],
-                    ['Fairing Sep', hudTelemetry.fairingSeparated],
-                    ['Sat Orbit', hudTelemetry.payloadSeparated],
-                  ].map(([lbl, done]) => (
-                    <div
-                      key={String(lbl)}
-                      className={`py-1 px-1 rounded border ${
-                        done
-                          ? 'bg-emerald-500/15 border-emerald-500/45 text-emerald-300'
-                          : 'bg-slate-900 border-slate-800 text-slate-500'
-                      }`}
-                    >
-                      {lbl}
-                    </div>
-                  ))}
+                {/* Compact Selected Summary & Expand/Collapse Configuration Toggle */}
+                <div className="flex items-center justify-between gap-2 bg-slate-900/70 border border-slate-800 rounded-lg px-2.5 py-1.5">
+                  <div className="text-[11px] text-slate-300 truncate">
+                    <span className="text-cyan-300 font-semibold">{teamMode ? '4-Player' : 'Solo'}</span>
+                    {' · '}
+                    <span>{DIFFICULTIES.find((d) => d.id === selectedDifficultyId)?.name}</span>
+                  </div>
+                  <button
+                    type="button"
+                    data-toggle-options="true"
+                    aria-expanded={optionsExpanded}
+                    onClick={() => {
+                      missionAudio.playSelect();
+                      setOptionsExpanded((v) => !v);
+                    }}
+                    className="px-2 py-1 rounded bg-[#070A10] border border-slate-700 hover:border-cyan-400 text-cyan-300 text-[11px] font-medium flex items-center gap-1 cursor-pointer shrink-0 transition-colors"
+                  >
+                    <SlidersHorizontal className="w-3 h-3" />
+                    {optionsExpanded ? 'Collapse' : 'Expand Options'}
+                    {optionsExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
                 </div>
 
-                {/* Selected Options for Immediate User Interaction */}
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-                    <span>Selected Mission Options (Click to Switch &amp; Relaunch)</span>
-                    <button
-                      type="button"
-                      onClick={replayLaunch}
-                      className="text-cyan-300 hover:text-cyan-200 flex items-center gap-1 cursor-pointer"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      Replay
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {SCENARIOS.slice(0, 3).map((s) => {
-                      const active = s.id === selectedScenarioId;
-                      return (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => handleChooseOptionAndLaunch(s.id)}
-                          className={`p-2 rounded-lg border text-left cursor-pointer transition-colors ${
-                            active
-                              ? 'bg-cyan-500/15 border-cyan-400 text-slate-50'
-                              : 'bg-[#070A10] border-slate-800 text-slate-300 hover:border-slate-600'
+                {/* Expandable Full Mission & Configuration Options */}
+                {optionsExpanded && (
+                  <div className="flex flex-col gap-2.5 pt-0.5 border-t border-slate-800/80">
+                    {/* Ascent Milestones */}
+                    <div className="grid grid-cols-4 gap-1 text-[10px] font-mono-tabular text-center">
+                      {[
+                        ['Liftoff', true],
+                        ['Stage 1 Sep', hudTelemetry.stage1Separated],
+                        ['Fairing Sep', hudTelemetry.fairingSeparated],
+                        ['Sat Orbit', hudTelemetry.payloadSeparated],
+                      ].map(([lbl, done]) => (
+                        <div
+                          key={String(lbl)}
+                          className={`py-1 px-1 rounded border ${
+                            done
+                              ? 'bg-emerald-500/15 border-emerald-500/45 text-emerald-300'
+                              : 'bg-slate-900 border-slate-800 text-slate-500'
                           }`}
                         >
-                          <div className="text-[11px] font-semibold leading-tight truncate">{s.title}</div>
-                          <div className="font-mono-tabular text-[10px] text-cyan-300 mt-0.5">
-                            {s.targetBody.toUpperCase()} · ${s.baseBudgetM}M
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          {lbl}
+                        </div>
+                      ))}
+                    </div>
 
-                  {/* Quick Crew & Engineering Margin Options */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center justify-between text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
+                      <span>Mission Program (Click to Relaunch)</span>
                       <button
                         type="button"
-                        onClick={() => onToggleTeamMode(false)}
-                        className={`px-2 py-1 rounded text-[11px] font-medium border flex items-center gap-1 cursor-pointer ${
-                          !teamMode
-                            ? 'bg-cyan-500/15 border-cyan-400 text-slate-50'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                        }`}
+                        onClick={replayLaunch}
+                        className="text-cyan-300 hover:text-cyan-200 flex items-center gap-1 cursor-pointer"
                       >
-                        <User className="w-3 h-3 text-cyan-400" />
-                        Solo
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onToggleTeamMode(true)}
-                        className={`px-2 py-1 rounded text-[11px] font-medium border flex items-center gap-1 cursor-pointer ${
-                          teamMode
-                            ? 'bg-cyan-500/15 border-cyan-400 text-slate-50'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        <Users className="w-3 h-3 text-emerald-400" />
-                        4-Player
+                        <RotateCcw className="w-3 h-3" />
+                        Replay
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      {quickDiffs.map((d) => (
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {SCENARIOS.slice(0, 3).map((s) => {
+                        const active = s.id === selectedScenarioId;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => handleChooseOptionAndLaunch(s.id)}
+                            className={`p-2 rounded-lg border text-left cursor-pointer transition-colors ${
+                              active
+                                ? 'bg-cyan-500/15 border-cyan-400 text-slate-50'
+                                : 'bg-[#070A10] border-slate-800 text-slate-300 hover:border-slate-600'
+                            }`}
+                          >
+                            <div className="text-[11px] font-semibold leading-tight truncate">{s.title}</div>
+                            <div className="font-mono-tabular text-[10px] text-cyan-300 mt-0.5">
+                              {s.targetBody.toUpperCase()} · ${s.baseBudgetM}M
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Quick Crew & Engineering Margin Options */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1">
                         <button
-                          key={d.id}
                           type="button"
-                          onClick={() => onSelectDifficulty(d.id)}
-                          className={`px-2 py-1 rounded text-[10px] font-mono-tabular border cursor-pointer ${
-                            selectedDifficultyId === d.id
-                              ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                          onClick={() => onToggleTeamMode(false)}
+                          className={`px-2 py-1 rounded text-[11px] font-medium border flex items-center gap-1 cursor-pointer ${
+                            !teamMode
+                              ? 'bg-cyan-500/15 border-cyan-400 text-slate-50'
                               : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                           }`}
                         >
-                          {d.name}
+                          <User className="w-3 h-3 text-cyan-400" />
+                          Solo
                         </button>
-                      ))}
+                        <button
+                          type="button"
+                          onClick={() => onToggleTeamMode(true)}
+                          className={`px-2 py-1 rounded text-[11px] font-medium border flex items-center gap-1 cursor-pointer ${
+                            teamMode
+                              ? 'bg-cyan-500/15 border-cyan-400 text-slate-50'
+                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          <Users className="w-3 h-3 text-emerald-400" />
+                          4-Player
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {quickDiffs.map((d) => (
+                          <button
+                            key={d.id}
+                            type="button"
+                            onClick={() => onSelectDifficulty(d.id)}
+                            className={`px-2 py-1 rounded text-[10px] font-mono-tabular border cursor-pointer ${
+                              selectedDifficultyId === d.id
+                                ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {d.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Live Orbit Decision once Satellite is Released */}
                 {stage === 'anomaly' && (
-                  <div className="bg-amber-950/40 border border-amber-500/50 rounded-xl p-3 flex flex-col gap-2">
-                    <div className="text-xs font-semibold text-amber-300">
-                      Satellite Released in Orbit! Choose First Orbital Pass Action:
+                  <div className="bg-amber-950/40 border border-amber-500/50 rounded-xl p-2.5 flex flex-col gap-1.5">
+                    <div className="text-[11px] font-semibold text-amber-300">
+                      Satellite in Orbit! First Pass Action:
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-1.5">
                       <button
                         type="button"
                         data-starter-choice="power"
                         onClick={() => resolveOrbitChoice('power')}
                         className="p-2 rounded-lg bg-cyan-500/15 border border-cyan-400 hover:bg-cyan-500/25 text-left cursor-pointer"
                       >
-                        <div className="text-xs font-bold text-slate-50">Sun-Angle Wings</div>
+                        <div className="text-[11px] font-bold text-slate-50">Sun-Angle Wings</div>
                         <div className="font-mono-tabular text-[10px] text-emerald-300">+18% Power</div>
                       </button>
                       <button
@@ -426,18 +464,18 @@ export const LaunchStageLanding: React.FC<LaunchStageLandingProps> = ({
                         onClick={() => resolveOrbitChoice('science')}
                         className="p-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-left cursor-pointer"
                       >
-                        <div className="text-xs font-bold text-slate-50">Boost S-Band RF</div>
-                        <div className="font-mono-tabular text-[10px] text-cyan-300">+22% Data Rate</div>
+                        <div className="text-[11px] font-bold text-slate-50">Boost S-Band RF</div>
+                        <div className="font-mono-tabular text-[10px] text-cyan-300">+22% Data</div>
                       </button>
                     </div>
                   </div>
                 )}
 
                 {stage === 'complete' && (
-                  <div className="bg-emerald-950/45 border border-emerald-500/50 rounded-xl p-3 flex items-center justify-between gap-2">
+                  <div className="bg-emerald-950/45 border border-emerald-500/50 rounded-xl p-2.5 flex items-center justify-between gap-2">
                     <div>
                       <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4" />
+                        <CheckCircle2 className="w-3.5 h-3.5" />
                         ORBIT COMMISSIONED · GRADE S ({starterScore}/100)
                       </div>
                       <div className="text-[11px] text-slate-300 mt-0.5">{decisionNote}</div>
@@ -446,7 +484,7 @@ export const LaunchStageLanding: React.FC<LaunchStageLandingProps> = ({
                 )}
 
                 {/* Primary Flow CTA: Enter Home & Complete Game */}
-                <div className="flex flex-wrap items-center gap-2 pt-1">
+                <div className="flex items-center gap-2 pt-0.5">
                   <button
                     type="button"
                     data-enter-home="true"
@@ -454,20 +492,20 @@ export const LaunchStageLanding: React.FC<LaunchStageLandingProps> = ({
                       missionAudio.playSelect();
                       onContinueToHome();
                     }}
-                    className="flex-1 min-w-[190px] py-2.5 px-4 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold text-xs sm:text-sm uppercase tracking-wide flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                    className="flex-1 py-2 px-3 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
                   >
-                    Enter Home &amp; Full Game
-                    <ArrowRight className="w-4 h-4" />
+                    Home &amp; Full Game
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
 
                   <button
                     type="button"
                     onClick={onLaunchOptimalDirect}
-                    className="px-3 py-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/50 hover:bg-emerald-500/25 text-emerald-300 font-semibold text-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    className="px-2.5 py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/50 hover:bg-emerald-500/25 text-emerald-300 font-semibold text-xs flex items-center gap-1 cursor-pointer whitespace-nowrap"
                     title="Auto-Configure Optimal Spacecraft & Launch Full Mission"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    Auto-Setup &amp; Play
+                    Auto-Setup
                   </button>
                 </div>
               </>

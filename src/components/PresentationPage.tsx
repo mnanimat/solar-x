@@ -355,7 +355,7 @@ export const PresentationPage: React.FC<PresentationPageProps> = ({
             <div className="flex items-center gap-2 text-xs font-mono-tabular text-cyan-300">
               <span>Solar-X</span>
               <span aria-hidden="true">·</span>
-              <span>NASA Space Apps Challenge 13</span>
+              <span>NASA Space Apps Challenge 2026</span>
             </div>
 
             <h1 className="font-display font-bold text-3xl sm:text-5xl tracking-tight text-slate-50 leading-[1.06] text-balance max-w-xl">
