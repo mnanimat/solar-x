@@ -5,7 +5,7 @@ import {
   TEAM_ROLES,
   type DifficultyId,
 } from '../engine/missionCatalog';
-import { Rocket, Users, User, Trophy, ChevronRight, ShieldAlert, ArrowLeft, Maximize2 } from 'lucide-react';
+import { Rocket, Users, User, Trophy, ChevronRight, ShieldAlert, ArrowLeft, Maximize2, ExternalLink } from 'lucide-react';
 import { WindowControls } from './WindowControls';
 
 export interface ArchivedMissionRun {
@@ -297,8 +297,16 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           </div>
         )}
 
-        <div className="flex items-center justify-between text-[10px] font-mono-tabular text-slate-500">
-          <span>PRESS ENTER OR SPACE TO START</span>
+        <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular text-slate-500 pt-1 border-t border-slate-800/70">
+          <a
+            href="https://github.com/mnanimat/solar-x"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-2 py-1 rounded bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-200 hover:text-cyan-300 inline-flex items-center gap-1 transition-colors"
+          >
+            GitHub Repo
+            <ExternalLink className="w-2.5 h-2.5" />
+          </a>
           <span className="flex items-center gap-1">
             <ShieldAlert className="w-3 h-3" /> NASA CML 1–4 &amp; CUBESAT 101
           </span>

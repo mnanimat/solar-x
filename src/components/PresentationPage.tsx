@@ -6,8 +6,10 @@ import {
   AlertOctagon,
   ArrowRight,
   CheckCircle2,
+  Code2,
   Compass,
   Cpu,
+  ExternalLink,
   Gamepad2,
   Keyboard,
   Mouse,
@@ -1047,7 +1049,7 @@ export const PresentationPage: React.FC<PresentationPageProps> = ({
       <footer className="bg-[#060910] border-t border-slate-800/80 px-4 sm:px-8 py-6">
         <div className="w-full max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400">
           <div>Solar-X Development Team · Space Mission Architect</div>
-          <div className="flex items-center gap-5">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-5">
             <a href="#overview" className="hover:text-slate-200 transition-colors">Overview</a>
             <button type="button" onClick={onStartMissionSetup} className="hover:text-slate-200 transition-colors cursor-pointer">
               Mission Setup
@@ -1055,6 +1057,16 @@ export const PresentationPage: React.FC<PresentationPageProps> = ({
             <button type="button" onClick={onQuickWorkbench} className="hover:text-cyan-300 transition-colors cursor-pointer">
               3D Workbench
             </button>
+            <a
+              href="https://github.com/mnanimat/solar-x"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-lg bg-[#0B111E] border border-slate-700 hover:border-cyan-400 text-slate-100 hover:text-cyan-300 font-medium inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
+            >
+              <Code2 className="w-3.5 h-3.5 text-cyan-400" />
+              GitHub Repository
+              <ExternalLink className="w-3 h-3 opacity-75" />
+            </a>
           </div>
         </div>
       </footer>

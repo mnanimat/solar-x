@@ -1201,6 +1201,13 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
     const scratchOrbitPt = new THREE.Vector3();
     const scratchNadirMat = new THREE.Matrix4();
     const scratchNadirQuat = new THREE.Quaternion();
+    const scratchOutward = new THREE.Vector3();
+    const scratchSideAxis = new THREE.Vector3();
+    const scratchTangent = new THREE.Vector3();
+    const scratchChaseCam = new THREE.Vector3();
+    const scratchChaseLook = new THREE.Vector3();
+    const scratchCamFwd = new THREE.Vector3();
+    const scratchCamRight = new THREE.Vector3();
     const upY = new THREE.Vector3(0, 1, 0);
 
     const targetCamPos = new THREE.Vector3(5.2, 2.8, 6.2);
@@ -1208,6 +1215,8 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
     let lastPresetKey = '';
     let userAdjustedCamera = false;
     let orbitCamTransitionRemaining = 0;
+    let lastStarterPhase: string = '';
+    let lastStarterProgress = 0;
 
     const onControlsStart = () => {
       userAdjustedCamera = true;
@@ -1491,13 +1500,84 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       if (plannedAscentLine) plannedAscentLine.visible = showTrajectoryOverlay;
 
       // Positioning & Phase Animation
-      if (curMode === 'starter' || curMode === 'intro') {
+      if (curMode === 'starter') {
         worldGroup.visible = true;
-        if (curMode === 'starter') {
-          worldGroup.position.set(3.5, -0.25, -2.0);
-        } else {
-          worldGroup.position.set(4.8, -0.25, -2.2);
+        worldGroup.position.set(0, 0, 0);
+        beamMesh.visible = false;
+
+        if (curIntro && ascentCurve) {
+          if (curIntro.phase === 'launch') {
+            renderRocketLaunchFrame(curIntro.launchProgress, now, 0.56, 0.45, 0.65, worldGroup.position);
+          } else {
+            renderDeployedOrbitFrame(
+              curIntro.phase,
+              curIntro.deployProgress,
+              curIntro.orbitAngleRad,
+              0.65,
+              worldGroup.position
+            );
+          }
+
+          // Detect Replay / mission preset reset -> snap/re-engage automatic tracking cleanly
+          const replayedLaunch =
+            curIntro.phase === 'launch' &&
+            (lastStarterPhase !== 'launch' || curIntro.launchProgress < lastStarterProgress - 0.35);
+          lastStarterPhase = curIntro.phase;
+          lastStarterProgress = curIntro.launchProgress;
+
+          // Target focus point: rocket during ascent -> deployed satellite upon release & orbit
+          const focusObjPos =
+            curIntro.phase === 'launch' && curIntro.launchProgress < 0.88
+              ? scratchCurvePosWorld
+              : craftAnchor.position;
+
+          scratchOutward.copy(focusObjPos).sub(worldGroup.position).normalize();
+          scratchSideAxis.set(0, 1, 0).applyEuler(orbitGroup.rotation).normalize();
+          scratchTangent.crossVectors(scratchSideAxis, scratchOutward).normalize();
+
+          const isLaunchPhase = curIntro.phase === 'launch';
+          const outDist = isLaunchPhase ? 4.6 : 4.2;
+          const sideDist = isLaunchPhase ? 3.2 : 2.6;
+          const backDist = isLaunchPhase ? 3.8 : 3.5;
+
+          scratchChaseCam
+            .copy(focusObjPos)
+            .addScaledVector(scratchOutward, outDist)
+            .addScaledVector(scratchSideAxis, sideDist)
+            .addScaledVector(scratchTangent, -backDist);
+
+          scratchChaseLook.copy(focusObjPos).lerp(worldGroup.position, isLaunchPhase ? 0.16 : 0.12);
+
+          // Shift framing slightly left in camera-space so rocket & satellite sit in the open right 60% of the screen
+          scratchCamFwd.copy(scratchChaseLook).sub(scratchChaseCam).normalize();
+          scratchCamRight.crossVectors(scratchCamFwd, upY);
+          if (scratchCamRight.lengthSq() > 0.001) {
+            scratchCamRight.normalize();
+            const screenShift = isLaunchPhase ? -0.9 : -1.35;
+            scratchChaseCam.addScaledVector(scratchCamRight, screenShift);
+            scratchChaseLook.addScaledVector(scratchCamRight, screenShift);
+          }
+
+          if (lastPresetKey !== 'starter' || replayedLaunch) {
+            camera.position.copy(scratchChaseCam);
+            controls.target.copy(scratchChaseLook);
+            lastPresetKey = 'starter';
+            userAdjustedCamera = false;
+            orbitCamTransitionRemaining = 0;
+          } else if (!userAdjustedCamera) {
+            const camDamp = isLaunchPhase ? 4.8 : 5.6;
+            const lookDamp = isLaunchPhase ? 6.8 : 7.5;
+            camera.position.x = THREE.MathUtils.damp(camera.position.x, scratchChaseCam.x, camDamp, dt);
+            camera.position.y = THREE.MathUtils.damp(camera.position.y, scratchChaseCam.y, camDamp, dt);
+            camera.position.z = THREE.MathUtils.damp(camera.position.z, scratchChaseCam.z, camDamp, dt);
+            controls.target.x = THREE.MathUtils.damp(controls.target.x, scratchChaseLook.x, lookDamp, dt);
+            controls.target.y = THREE.MathUtils.damp(controls.target.y, scratchChaseLook.y, lookDamp, dt);
+            controls.target.z = THREE.MathUtils.damp(controls.target.z, scratchChaseLook.z, lookDamp, dt);
+          }
         }
+      } else if (curMode === 'intro') {
+        worldGroup.visible = true;
+        worldGroup.position.set(4.8, -0.25, -2.2);
         beamMesh.visible = false;
 
         if (curIntro && ascentCurve) {
@@ -1526,18 +1606,12 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
           builtCraft.root.visible = true;
         }
 
-        const presetTag = curMode === 'starter' ? 'starter' : 'intro';
-        if (lastPresetKey !== presetTag) {
-          if (curMode === 'starter') {
-            targetCamPos.set(-1.9, 3.0, 16.4);
-            targetLookAt.set(1.2, 0.0, -1.0);
-          } else {
-            targetCamPos.set(-2.2, 3.4, 17.5);
-            targetLookAt.set(1.6, 0.0, -1.0);
-          }
+        if (lastPresetKey !== 'intro') {
+          targetCamPos.set(-2.2, 3.4, 17.5);
+          targetLookAt.set(1.6, 0.0, -1.0);
           camera.position.copy(targetCamPos);
           controls.target.copy(targetLookAt);
-          lastPresetKey = presetTag;
+          lastPresetKey = 'intro';
           userAdjustedCamera = false;
           orbitCamTransitionRemaining = 0;
         }
@@ -1705,7 +1779,9 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       }
 
       // Dynamic minimum zoom distance so zooming never clips inside or fills screen with blurry globe surface
-      const isChaseCam = curMode === 'simulation' && curSim?.phase !== 'launch' && curPreset === 'assembly';
+      const isChaseCam =
+        (curMode === 'starter' && Boolean(curIntro)) ||
+        (curMode === 'simulation' && curSim?.phase !== 'launch' && curPreset === 'assembly');
       controls.minDistance = !worldGroup.visible ? 2.2 : isChaseCam ? 2.4 : planetRadius + 6.2;
 
       // PS4/PS5 Right Stick & Keyboard camera orbit/zoom control
@@ -1726,7 +1802,7 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
 
       // Radial surface barrier clamp: keep camera safely outside the planet atmosphere at all times
       if (worldGroup.visible) {
-        const minSurfaceDist = isChaseCam ? planetRadius + 1.4 : planetRadius + 5.6;
+        const minSurfaceDist = isChaseCam ? planetRadius + 1.8 : planetRadius + 5.6;
         radialClampVec.copy(camera.position).sub(worldGroup.position);
         const distSq = radialClampVec.lengthSq();
         if (distSq < minSurfaceDist * minSurfaceDist) {
