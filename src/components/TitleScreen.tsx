@@ -5,7 +5,7 @@ import {
   TEAM_ROLES,
   type DifficultyId,
 } from '../engine/missionCatalog';
-import { Rocket, Users, User, Trophy, ChevronRight, ShieldAlert } from 'lucide-react';
+import { Rocket, Users, User, Trophy, ChevronRight, ShieldAlert, ArrowLeft } from 'lucide-react';
 
 export interface ArchivedMissionRun {
   id: string;
@@ -28,6 +28,7 @@ interface TitleScreenProps {
   onSelectDifficulty: (id: DifficultyId) => void;
   onToggleTeamMode: (team: boolean) => void;
   onStartMission: () => void;
+  onOpenPresentation?: () => void;
 }
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
@@ -39,6 +40,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onSelectDifficulty,
   onToggleTeamMode,
   onStartMission,
+  onOpenPresentation,
 }) => {
   const [showArchive, setShowArchive] = useState(false);
   const scenario = SCENARIOS.find((s) => s.id === selectedScenarioId) ?? SCENARIOS[0];
@@ -51,7 +53,18 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-cyan-400">
             <span>SOLAR-X DEVELOPMENT TEAM</span>
-            <span className="text-slate-400">CML 1–4 SIMULATOR</span>
+            {onOpenPresentation ? (
+              <button
+                type="button"
+                onClick={onOpenPresentation}
+                className="text-slate-300 hover:text-cyan-300 flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <ArrowLeft className="w-3 h-3" />
+                Game Overview
+              </button>
+            ) : (
+              <span className="text-slate-400">CML 1–4 SIMULATOR</span>
+            )}
           </div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-50 leading-none">
             SPACE MISSION ARCHITECT

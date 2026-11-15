@@ -10,7 +10,7 @@ import { buildAscentControlPoints } from '../engine/launchTrajectory';
 export type ViewportCameraPreset = 'assembly' | 'orbit' | 'launch';
 
 interface SpacecraftAndOrbit3DProps {
-  mode: 'title' | 'workbench' | 'simulation';
+  mode: 'intro' | 'title' | 'workbench' | 'simulation';
   viewPreset: ViewportCameraPreset;
   explodedAmount: number; // 0..1 for CAD assembly inspection
   evaluation: DesignEvaluation;
@@ -1285,10 +1285,14 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
       if (plannedAscentLine) plannedAscentLine.visible = showTrajectoryOverlay;
 
       // Positioning & Phase Animation
-      if (curMode === 'title') {
+      if (curMode === 'intro' || curMode === 'title') {
         titleOrbitAngle += dt * 0.28;
         worldGroup.visible = true;
-        worldGroup.position.set(1.2, -0.4, -2.5);
+        if (curMode === 'intro') {
+          worldGroup.position.set(4.8, -0.25, -2.2);
+        } else {
+          worldGroup.position.set(1.2, -0.4, -2.5);
+        }
         const orbitPt = new THREE.Vector3(
           Math.cos(titleOrbitAngle) * orbitRadius,
           0,
@@ -1303,7 +1307,13 @@ export const SpacecraftAndOrbit3D: React.FC<SpacecraftAndOrbit3DProps> = ({
         builtCraft.root.visible = true;
         beamMesh.visible = false;
 
-        if (lastPresetKey !== 'title') {
+        if (curMode === 'intro' && lastPresetKey !== 'intro') {
+          targetCamPos.set(-1.6, 2.6, 14.4);
+          targetLookAt.set(1.4, -0.1, -1.2);
+          camera.position.copy(targetCamPos);
+          controls.target.copy(targetLookAt);
+          lastPresetKey = 'intro';
+        } else if (curMode === 'title' && lastPresetKey !== 'title') {
           targetCamPos.set(-7.5, 3.2, 11.5);
           targetLookAt.set(0.6, 0, -1.2);
           camera.position.copy(targetCamPos);

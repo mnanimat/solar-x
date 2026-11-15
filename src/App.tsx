@@ -23,13 +23,14 @@ import {
   type PreviousGamepadButtons,
 } from './engine/flightControls';
 import { SpacecraftAndOrbit3D, type ViewportCameraPreset } from './components/SpacecraftAndOrbit3D';
+import { PresentationPage } from './components/PresentationPage';
 import { TitleScreen, type ArchivedMissionRun } from './components/TitleScreen';
 import { DesignWorkbench } from './components/DesignWorkbench';
 import { SimulationHUD } from './components/SimulationHUD';
 import { DebriefModal } from './components/DebriefModal';
 import { missionAudio } from './audio/missionAudio';
 
-type AppScreen = 'title' | 'workbench' | 'simulation';
+type AppScreen = 'intro' | 'title' | 'workbench' | 'simulation';
 
 const ARCHIVE_STORAGE_KEY = 'solarx_mission_archive_v1';
 
@@ -80,7 +81,7 @@ export default function App() {
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('autostart') === '1';
 
-  const [screen, setScreen] = useState<AppScreen>(autostart ? 'workbench' : 'title');
+  const [screen, setScreen] = useState<AppScreen>(autostart ? 'workbench' : 'intro');
   const [design, setDesign] = useState<MissionDesign>(() =>
     createDefaultDesign('bionutrients-leo', 'beginner', false)
   );
@@ -125,7 +126,7 @@ export default function App() {
 
   // Synchronize body.dataset.state for deterministic accessibility & automation hooks
   useEffect(() => {
-    if (screen === 'title') {
+    if (screen === 'intro' || screen === 'title') {
       document.body.dataset.state = 'title';
     } else if (screen === 'simulation' && outcome) {
       document.body.dataset.state = 'gameover';
@@ -504,6 +505,16 @@ export default function App() {
         onTrajectoryDrag={handleTrajectoryDrag}
       />
 
+      {screen === 'intro' && (
+        <PresentationPage
+          onStartMissionSetup={() => {
+            missionAudio.playSelect();
+            setScreen('title');
+          }}
+          onQuickWorkbench={handleStartWorkbench}
+        />
+      )}
+
       {screen === 'title' && (
         <TitleScreen
           selectedScenarioId={design.scenarioId}
@@ -514,6 +525,10 @@ export default function App() {
           onSelectDifficulty={handleSelectDifficulty}
           onToggleTeamMode={handleToggleTeamMode}
           onStartMission={handleStartWorkbench}
+          onOpenPresentation={() => {
+            missionAudio.playSelect();
+            setScreen('intro');
+          }}
         />
       )}
 
